@@ -307,6 +307,21 @@ a temporary directory, overlay the login prefix's KWin binaries and
 `libkwin.so.6`, and pass that directory as `LOGOUT_VM_COMBINED`. Use
 `LOGOUT_VM_STOP_FIX` and `LOGOUT_VM_DELAY_STOP=1` as above.
 
+### Manjaro / SDDM comparison
+
+On a second machine (Manjaro, Plasma/KWin 6.8.2, SDDM 0.21.0),
+the desktop ran Wayland and SDDM used an X11 greeter. The monitor
+was connected directly to the NVIDIA-driven output. The user saw
+one brief black screen on normal logout and signed back in.
+SDDM's greeter connected 1.757 s after desktop KWin stopped.
+The sampled connector remained connected, although its enabled flag
+went from enabled on the old desktop to disabled on the greeter VT
+and enabled again after returning to the desktop. That flag does not
+measure physical link state or tell us the greeter refresh rate.
+The CachyOS generator was absent. Different GPU wiring, login manager,
+and greeter backend make this a comparison, not a controlled A/B.
+No changes were applied on Manjaro.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
