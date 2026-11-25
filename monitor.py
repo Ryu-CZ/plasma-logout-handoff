@@ -201,11 +201,19 @@ from pathlib import Path
 state = Path('/sys/kernel/debug/dri/0/state')
 with open('/tmp/kms-state', 'w', buffering=1) as out:
     print('\\nKMS_STATE_READY', flush=True)
+    last_fb = None
     for _ in range(600):
         start = time.monotonic()
         fields = re.findall(r'^(plane\\[.*|crtc\\[.*|\\s*(?:crtc|fb|enable|active)=.*)$',
                             state.read_text(), re.M)
         print(f'{start:.6f} {time.monotonic():.6f}', *(f.strip() for f in fields), file=out)
+        fb = next((f.strip() for f in fields if f.strip().startswith('fb=')), '')
+        if fb != last_fb:
+            owners = state.with_name('framebuffer').read_text()
+            block = re.search(r'(?m)^framebuffer\\[' + fb[3:] + r'\\]:.*(?:\\n[ \\t].*)*', owners)
+            with open('/tmp/kms-owners', 'a') as owner_log:
+                print(start, fb, block[0].splitlines()[:2] if block else 'unlisted', file=owner_log)
+            last_fb = fb
         time.sleep(.005)
 """
         payload = base64.b64encode(sampler.encode()).decode()
@@ -286,7 +294,7 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
                 'grep kms_set_mode "$t/trace" | tail -100; printf "\\nKMS_TRACE_END\\n"')
         wait_for(b"KMS_TRACE_END", 10)
     if os.environ.get("LOGOUT_VM_KMS_STATE") == "1":
-        command("""awk '{s=$0; sub(/^[^ ]+ [^ ]+ /,"",s); if (s!=last || NR==1) print "KMS_STATE",$0; last=s} END {print "KMS_LAST",$0}' /tmp/kms-state; """
+        command("""head -20 /tmp/kms-owners; awk '{s=$0; sub(/^[^ ]+ [^ ]+ /,"",s); if (s!=last || NR==1) print "KMS_STATE",$0; last=s} END {print "KMS_LAST",$0}' /tmp/kms-state; """
                 'printf "\\nKMS_STATE_END\\n"')
         wait_for(b"KMS_STATE_END", 10)
     report = (results / "serial.log").read_bytes()

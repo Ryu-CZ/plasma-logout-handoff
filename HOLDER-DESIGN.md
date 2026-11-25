@@ -164,6 +164,18 @@ Greeter Connect was at guest 20.327 s; frame 018 was nonblack.
 Re-login passed. These are time correlations with sampled state, not
 proof of framebuffer authorship, exact scanout, or physical link state.
 
+Framebuffer allocator repeat `owner-1795644184`: when plane 36
+changed FB, the guest sampler also read the DRM framebuffer listing.
+After desktop KWin FB 44, the plane used FB 42 (allocated by
+`[fbcon]`) for about 0.34 s, then switched to KWin-allocated FB 47
+and 41. With the synchronized screenshot clock, near-black/black
+frames 006–012 fall inside the fbcon interval; frames 015–016 were
+still entirely black in the subsequent KWin interval. Frame 017 was
+nonblack and re-login passed. Allocator is not a record of who
+submitted a commit. This favors testing a trusted image across both
+the console fallback and first compositor frames rather than just
+preserving the outgoing KWin framebuffer. No physical attribution.
+
 ## Physical stock Wayland diagnostic
 
 On Nov 25, logind recorded Wayland SDDM greeter sessions and the
