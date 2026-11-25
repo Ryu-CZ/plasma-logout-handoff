@@ -36,6 +36,9 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     printf '%s\n' \
                         'printf "%s\\n" "[General]" "DisplayServer=wayland" "[Wayland]" "CompositorCommand=/usr/bin/kwin_wayland --no-lockscreen --no-global-shortcuts --no-kactivities --locale1" >/etc/sddm.conf.d/zz-logout-vm-backend.conf'
                 fi
+                if [[ ${SDDM_VM_WAYLAND:-0} == 1 && ${SDDM_VM_GREETER_FAIL:-0} == 1 ]]; then
+                    printf '%s\n' 'sed -i "s|^CompositorCommand=.*|CompositorCommand=/usr/bin/false|" /etc/sddm.conf.d/zz-logout-vm-backend.conf'
+                fi
                 if [[ ${SDDM_VM_RETRO:-0} == 1 ]]; then
                     # Xorg's built-in stipple is visible before SDDM draws.
                     printf '%s\n' 'printf "%s\\n" "[X11]" "ServerArguments=-nolisten tcp -retro" >>/etc/sddm.conf.d/99-logout-vm.conf'
