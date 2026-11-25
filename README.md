@@ -250,7 +250,12 @@ desktop VT, greeter VT, and new desktop VT. Greeter connection was
 3.237 s after desktop KWin stopped, versus 3.372 s at 100 Hz. Re-login
 succeeded. The desktop returned to 100 Hz (1188 MHz verified in DRM
 state) and the greeter configuration was restored byte-for-byte.
-The user's visual observation for this comparison is pending.
+The user saw what looked like **one kind of black** at constant timing,
+rather than the distinct pitch-black and backlit dark-gray phases from
+the 100 Hz run. That supports the intermediate mode change contributing
+to the visible flicker, but one comparison cannot establish whether the
+DP link retrained or whether the remaining black was rendered content.
+For now, keep 100 Hz; holding 60 Hz was diagnostic, not a proposed fix.
 
 ### Combined login and lock regression
 
