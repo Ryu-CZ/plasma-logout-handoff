@@ -439,13 +439,14 @@ whether it appeared before the controls. Automatic rollback restored
 Xsetup byte-for-byte and removed the temporary helper; 144 Hz remained
 selected. A stock-versus-hook comparison is still needed.
 
-A later phone clip from `loki` (`video_2026-11-25_20-26-33.mp4`)
-shows a visibly black sample before the Breath greeter and black
-samples again after sign-in, before the desktop returns (reviewed at
-one frame per second). The clip does not establish exact durations,
-signal loss versus rendered black, or whether Xsetup was stock or
-hook-enabled. It shows a successful sign-in, not immediate re-login
-or a lock/unlock regression check.
+The requested phone clip from the hook-enabled `loki` trial
+(`video_2026-11-25_20-26-33.mp4`) shows a visibly black sample before
+the Breath greeter and black samples again after sign-in, before the
+desktop returns (reviewed at one frame per second). The hook did not
+eliminate the pre-greeter blackout. Without a comparable stock clip,
+we cannot say whether it shortened the blackout. The clip does not
+establish signal loss versus rendered black, immediate re-login, or
+lock/unlock behavior.
 
 For local timing (no sudo, if the current user can read the system journal):
 
