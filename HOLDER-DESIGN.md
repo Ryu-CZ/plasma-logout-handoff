@@ -55,3 +55,10 @@ output throughout. Repeat without the holder, and with the second
 producer stalled past the timeout. A successful synthetic run is
 only a frame-switch test: it cannot satisfy the SDDM authentication
 or seat-isolation checks.
+
+The Qt probe passed its offscreen smoke checks, but guest run
+`holder-probe-1795640420` failed the pixel assertion: the active QEMU
+output kept showing Plasma's desktop even though Qt reported frame
+swaps. This is not evidence for or against continuity. A future run
+must first demonstrate that the test surface is visible on the
+captured output, then exercise stock, holder, and stalled variants.

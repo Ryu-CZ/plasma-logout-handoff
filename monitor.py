@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import subprocess
 import sys
 import time
 
@@ -126,6 +127,43 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 '/usr/bin/true && printf "\\nLOGOUT_VM_DELAY_STARTED\\n"')
         wait_for(b"LOGOUT_VM_DELAY_STARTED", 10)
     execute("screendump", filename=str(results / "desktop.ppm"))
+    variant = os.environ.get("LOGOUT_VM_HOLDER_PROBE")
+    if variant:
+        if variant not in ("stock", "holder", "stall"):
+            raise ValueError("invalid holder probe variant")
+        qml = Path(os.environ["LOGOUT_VM_HOLDER_QML"]).read_bytes()
+        encoded = base64.b64encode(qml).decode()
+        command(f'echo {encoded} | base64 -d >/tmp/holder-probe.qml; '
+                'shell_pid=$(pgrep -u "$u" -x plasmashell | head -1); '
+                'display=$(tr "\\000" "\\n" <"/proc/$shell_pid/environ" '
+                '| grep "^WAYLAND_DISPLAY=" | cut -d= -f2-); '
+                'test -n "$display" && '
+                'runuser -u probe -- env XDG_RUNTIME_DIR="/run/user/$u" '
+                'WAYLAND_DISPLAY="$display" QT_QPA_PLATFORM=wayland '
+                f'/usr/lib/qt6/bin/qml /tmp/holder-probe.qml -- {variant} '
+                '>/tmp/holder-probe.log 2>&1 & job=$!')
+        for index in range(45):
+            execute("screendump", filename=str(results / f"holder-{index:02d}.png"),
+                    format="png")
+            time.sleep(0.07)
+        command('wait "$job"; result=$?; cat /tmp/holder-probe.log; '
+                'printf "\\nHOLDER_PROBE_EXIT_%s\\n" "$result"')
+        wait_for(b"HOLDER_PROBE_EXIT_" + (b"3" if variant == "stall" else b"0"), 10)
+        frames = sorted(results.glob("holder-*.png"))
+        pixels = subprocess.check_output([
+            "magick", *(str(frame) for frame in frames),
+            "-gravity", "center", "-crop", "1x1+0+0", "+repage",
+            "-depth", "8", "rgb:-",
+        ])
+        colors = [pixels[i:i + 3].hex() for i in range(0, len(pixels), 3)]
+        first = "000000" if variant == "stock" else "bf8030"
+        final = "aa36a5" if variant == "stall" else "30965d"
+        if first not in colors or final not in colors[colors.index(first) + 1:]:
+            raise RuntimeError(
+                f"holder probe not visible as expected; observed {sorted(set(colors))}")
+        if variant != "stock" and "000000" in colors[colors.index(first):colors.index(final)]:
+            raise RuntimeError("black sample between holder and successor")
+        sys.exit(0)
 
     # Wait for a new greeter connection, not a fixed delay after sampling.
     command('before=$(journalctl -b -u "$dm.service" --no-pager -o cat '

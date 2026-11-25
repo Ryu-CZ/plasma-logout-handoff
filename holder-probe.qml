@@ -6,6 +6,7 @@ Window {
     width: 640
     height: 480
     visible: true
+    Component.onCompleted: showFullScreen()
     title: "Logout holder probe"
     property string variant: Qt.application.arguments[Qt.application.arguments.length - 1]
     property string phase: "desktop"
