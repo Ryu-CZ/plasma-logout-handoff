@@ -32,6 +32,9 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     'install -d -o sddm -g sddm /var/lib/sddm' \
                     'printf "%s\\n" "[Last]" "Session=plasma.desktop" "User=probe" >/var/lib/sddm/state.conf' \
                     'chown sddm:sddm /var/lib/sddm/state.conf' 'systemctl daemon-reload'
+                if [[ ${SDDM_VM_WAYLAND:-0} == 1 && ${SDDM_VM_GREETER_FAIL:-0} == 1 ]]; then
+                    printf '%s\n' 'systemd-run --unit=logout-vm-revert --on-active=15s --timer-property=AccuracySec=1s /usr/bin/rm -f /etc/sddm.conf.d/zz-logout-vm-backend.conf || exit 1'
+                fi
                 if [[ ${SDDM_VM_WAYLAND:-0} == 1 ]]; then
                     printf '%s\n' \
                         'printf "%s\\n" "[General]" "DisplayServer=wayland" "[Wayland]" "CompositorCommand=/usr/bin/kwin_wayland --no-lockscreen --no-global-shortcuts --no-kactivities --locale1" >/etc/sddm.conf.d/zz-logout-vm-backend.conf'

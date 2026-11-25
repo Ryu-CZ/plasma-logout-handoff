@@ -94,12 +94,15 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     time.sleep(5 if os.environ.get("LOGOUT_VM_GREETER_MARKER") else 3)
     if mode == "sddm" and os.environ.get("SDDM_VM_GREETER_FAIL") == "1":
         command('journalctl -b -u sddm --no-pager -n 35; '
-                'rm -f /etc/sddm.conf.d/zz-logout-vm-backend.conf && '
+                'for i in {1..60}; do '
+                'test ! -e /etc/sddm.conf.d/zz-logout-vm-backend.conf && break; sleep .3; done; '
+                'test ! -e /etc/sddm.conf.d/zz-logout-vm-backend.conf && '
+                'journalctl -b -u logout-vm-revert.service --no-pager && '
                 'systemctl restart sddm && '
                 'for i in {1..30}; do '
                 'pgrep -x Xorg >/dev/null && sleep 1 && '
                 'printf "\\nGUEST_X11_RECOVERED\\n" && break; sleep .3; done')
-        wait_for(b"GUEST_X11_RECOVERED", 20)
+        wait_for(b"GUEST_X11_RECOVERED", 35)
     execute("screendump", filename=str(results / "initial-greeter.ppm"))
     def press(key):
         execute("send-key", keys=[{"type": "qcode", "data": key}], **{"hold-time": 35})
