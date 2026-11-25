@@ -485,7 +485,7 @@ measured Xorg startup, and the Wayland VM comparison found no shorter
 visible gap and did not model the physical NVIDIA path. Nothing here
 justifies changing session ordering or forcing an Xorg driver or mode.
 
-#### Synchronized stock capture (21:10)
+#### Same-run stock video and telemetry, unaligned clocks (21:10)
 
 A read-only sampler ran as a root transient unit (50 ms loop) during
 one stock logout at 4K 144 Hz while the user filmed the monitor
@@ -511,20 +511,16 @@ one stock logout at 4K 144 Hz while the user filmed the monitor
 | 20.9 s | Dark, backlight on |
 | 21.0 s | Breath greeter |
 
-The camera clock was not aligned to the journal. Anchoring the greeter
-frame to greeter connect, the backlight-off phase (~1.5 s) matches
-KWin exit → greeter connect (1.70 s). It therefore starts around desktop
-KWin's exit, not at the later VT switch or 60 Hz modeset. That points
-to the monitor losing a usable signal, or blanking itself, from when
-the desktop releases the output until Xorg drives it again. The
-backlit dark grey phase before it is the outgoing session. This is one
-run with an inferred alignment; the sampler logged mode, not CRTC
-`active`, so it does not prove the output was disabled at KWin exit.
+The video and sampler describe the same run, but the clocks have no
+shared timing cue. SDDM greeter Connect is not first visible presentation
+and cannot anchor the two timelines. The video distinguishes visibly
+backlit dark gray from apparent black; it does not measure signal or
+backlight state. The sampler reported the earlier 144 Hz mode and the
+later Xrandr 60 Hz mode, not the CRTC's active state in between. Neither
+timeline locates the start of the apparent blackout relative to KWin
+exit or VT activation.
 
-Implications: the wallpaper hook acts after the dark phase, so it
-cannot hide it. Matching refresh rates removes the later 60 Hz modeset
-but not a gap between DRM masters, consistent with the earlier
-subjective 60 Hz result. `nvidia_drm` has `modeset=Y fbdev=Y`.
+`nvidia_drm` had `modeset=Y fbdev=Y`.
 
 #### Output state capture (21:25)
 
@@ -541,12 +537,11 @@ blank was the last-close fbdev restore.
 | CRTC detached, `dpms=Off` | 14479.46 | 14613.54 |
 | Greeter connected | 14480.32 | 14614.38 |
 
-The output stays lit for ~0.9 s after KWin exits (the backlit dark
-grey phase), then is switched off within ~30 ms of the VT switch,
-i.e. when Xorg's NVIDIA driver takes the VT. Holding an fd changed
-nothing, so last-close is not the cause. After that the NVIDIA X
-driver drives the head outside the atomic state debugfs shows, so the
-relight time is not visible here; the video puts it at greeter paint.
+In both runs the sampled CRTC stayed active until roughly 0.9 s after
+KWin exited. The next sample after VT 2 activation showed detach and
+DPMS-off, about 20–30 ms later. A passive fd did not prevent it. These
+are not the 21:10 video run: do not map the detach onto its black
+frames. The trace does not establish when Xorg restored visible output.
 
 On stock X11 the detach coincided with the VT takeover. This does not
 identify the responsible operation or prove physical DP link retraining.
