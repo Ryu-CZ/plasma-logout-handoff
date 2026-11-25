@@ -429,6 +429,14 @@ KWin stopped in the control vs. 405 ms with the hook in this pair).
 On physical Manjaro it can only address the short interval after Xorg
 starts; do not describe it as a complete blackout fix.
 
+On `loki` at the usual 144 Hz, a temporary Xsetup hook drew Breath's
+stock wallpaper. Xorg took 1.55 s to reach Xsetup; the hook then took
+154 ms, and the greeter connected 155 ms after the draw was logged.
+Sign-in succeeded after the deliberate pause; this is not a rapid
+re-login or lock/unlock test. The draw log confirms the hook succeeded,
+not that the wallpaper was visible on the monitor. Visual observation
+and verification of the automatic rollback are pending.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
