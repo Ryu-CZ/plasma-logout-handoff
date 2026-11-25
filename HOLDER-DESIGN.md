@@ -49,16 +49,17 @@ SDDM 0.21.0
 `Seat::displayStopped()` evaluates `defaultDisplayServerType()` before
 `createDisplay()` reloads the config. Do not assume a staged drop-in
 will take effect on the very next logout. Also, deleting a drop-in
-does not replace an already-running greeter. The staged trial script
-must not be run: it writes the config before arming rollback.
+does not replace an already-running greeter. The original trial script wrote the config
+before arming rollback and was replaced before the physical test.
 
 The guest recovery run `wayland-recovery-1795640971` used
 `SDDM_VM_WAYLAND=1 SDDM_VM_GREETER_FAIL=1`. Removing the drop-in
 and explicitly restarting SDDM restored Xorg; the normal VM login,
 logout and re-login checks then passed. This verifies the recovery
-procedure in the VM, not a timer or an automatic fallback. A physical
-trial must separate restoring configuration from restarting SDDM:
-a timer must not restart the manager underneath an active desktop.
+procedure, not SDDM's automatic fallback. In a subsequent guest run
+(`wayland-timer-1795641108`), the pre-armed timer removed the config;
+a separate explicit restart restored X11. The timer does not restart
+SDDM underneath an active desktop.
 
 Validate backend selection and recovery in a disposable VM first,
 including a greeter that starts but never produces a frame. For the

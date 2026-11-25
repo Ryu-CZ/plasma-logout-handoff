@@ -548,21 +548,12 @@ nothing, so last-close is not the cause. After that the NVIDIA X
 driver drives the head outside the atomic state debugfs shows, so the
 relight time is not visible here; the video puts it at greeter paint.
 
-Consequence for an image holder: on the X11 greeter path the blank is
-caused by the incoming Xorg/NVIDIA takeover itself, which no holder
-running before it can prevent. A holder is only plausible if the
-greeter uses KMS like the desktop (SDDM Wayland greeter); whether a
-KMS→KMS master change on this driver keeps the CRTC lit must be
-measured physically, since the VM cannot model it.
-
-Online search (Haiku subagent, snippet-level) found no report of a
-modeset-free DRM master handoff on NVIDIA, nor KWin/SDDM options to
-reuse the scanout at startup. Flicker-free handoff exists for
-i915/amdgpu (Plymouth → GDM, FOSDEM 2019 "Flicker Free Boot"): the
-next master skips the modeset when the mode matches, and the previous
-holder exits only once the successor is ready. That is the same
-pattern as the proposed holder, so the physical Wayland greeter trial
-(`loki-wayland-greeter-trial.sh`) is the deciding measurement.
+On stock X11 the detach coincided with the VT takeover. This does not
+identify the responsible operation or prove physical DP link retraining.
+The physical stock Wayland greeter trial has since been completed: the
+visible blackout remained, X11 was restored, and the drop-in was absent.
+See [the decision plan](PLAN.md) for what did not work and
+[the trial record](HOLDER-DESIGN.md) for measurement limits.
 
 To repeat the stock capture, use an externally started, read-only
 monitor for the actual active VT and output timing. Align a camera time reference with

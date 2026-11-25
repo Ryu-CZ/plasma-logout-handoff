@@ -31,17 +31,21 @@ behavior from VM screenshots or equate greeter connection with presentation.
    rollback armed first. Keep a change only if the filmed gap disappears
    without regressions; otherwise restore stock.
 
-**Why this order:** In the [VM captures](HOLDER-DESIGN.md), black pixels
-overlapped active console and KWin framebuffers. Preloading the console
-and changing the greeter's initial background each colored only part of
-the handoff. On loki, neither holding the GPU device open nor switching
-the greeter to Wayland eliminated the visible blackout. The [DRM
-manual](https://docs.kernel.org/gpu/drm-uapi.html) explains why retaining
-a framebuffer is conditional on its plane still using it; it does not
-identify what the NVIDIA monitor did. No further wallpaper A/B is needed
-to choose the next step.
+### What did not solve the blackout
 
-## Supported paths
+| Tested approach | Result and limit |
+| --- | --- |
+| Passive GPU device handle (loki) | Keeping the device open without DRM master did not prevent the sampled controller detach. |
+| Stock SDDM Wayland greeter (loki) | The trial clip still showed about 1.5 s of black. X11 was restored. The clip does not identify the cause. |
+| X11 Xsetup wallpaper (loki) | Xsetup ran about 1.55 s after Xorg started, too late to cover startup. The two clips are not a verified hook-on/off comparison. |
+| Preloaded console image / greeter-only paint (VM) | Each image appeared, but neither covered the whole handoff. |
+| Compositor parked on an inactive VT (VM) | The process survived, but did not retain display control. |
+
+A persistent compositor that **remains active** is untested, not disproven.
+The [detailed captures](HOLDER-DESIGN.md) distinguish VM pixels from
+physical signal state. Do not infer DP link retraining from either.
+
+## Earlier cross-platform investigation (historical, not the current loki checklist)
 
 - CachyOS: Plasma Wayland → Plasma Login Manager (Wayland greeter).
 - Manjaro: Plasma Wayland → SDDM (X11 greeter, as configured on the
