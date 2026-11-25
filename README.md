@@ -66,6 +66,46 @@ the cause of either individual dark interval. The video is not committed.
 3. Check whether the shortened startup removes either dark interval.
    A shorter startup does not establish glitch-free scanout.
 
+## Reproduce in the disposable VM
+
+With the login project checked out next to this one and its verified VM
+cache available, run both conditions from this directory:
+
+```bash
+base=~/.cache/plasma-handoff-6.8.3/vm
+out=~/.cache/plasma-logout-handoff
+mkdir -p "$out"
+for mode in cold warm; do
+    bash run-vm.sh "$base" "$out/$mode-$(date +%s)" "$mode"
+done
+```
+
+Both conditions use stock KWin and a genuine password-based PLM Wayland
+login. The driver waits for the original greeter user manager to stop,
+then starts only that manager in the warm condition. It calls Plasma's
+normal logout service, samples the emulated screen about every 40 ms,
+and records journal landmarks. Guest disk and service changes are discarded
+at power-off. The two clocks are not aligned; measure intervals within
+the journal or within the frame timestamps, not across them.
+
+### Cold vs. warm result
+
+Both runs (`cold-1795616876`, `warm-1795616876`) returned to the actual
+PLM greeter. Timing starts at desktop KWin exit:
+
+| Journal event | Cold | Warm |
+| --- | ---: | ---: |
+| Switch to greeter VT requested | 135 ms | 70 ms |
+| Greeter KWin ready to systemd | 340 ms | 250 ms |
+| Greeter UI connected to PLM | 413 ms | 321 ms |
+
+The cold user manager took 56 ms in the VM, versus about 2.45 s on the
+physical PC. Pre-starting it avoided the cold start and advanced the
+journal milestones, but **both runs still sampled 13 fully black images
+out of 175**. These are sampled pixels, not counts of physical frames,
+and the experiment does not reproduce the PC's DP flicker. This is a
+candidate for a shorter physical return, not a fix for all black frames.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
