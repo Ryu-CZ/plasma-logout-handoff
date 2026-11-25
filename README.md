@@ -368,6 +368,16 @@ marker, not a proposed live setting. The hook can fill the window
 between Xorg startup and the greeter rendering, but it cannot cover
 the earlier Xorg startup gap.
 
+The physical Manjaro journal confirms that boundary: the X11 display
+setup hook ran about 1.59 s after Xorg launched, and the greeter connected
+about 150 ms after the hook. Xorg's own log had an approximately 886 ms
+gap around NVIDIA driver detection. That gap does not identify which
+operation consumed the time. A wallpaper in the X11 setup hook could
+only cover the tail, so it is not a good first physical experiment.
+A separate VM A/B with an SDDM Wayland greeter is the next candidate
+for reducing startup time, not a replacement for the measured X11
+baseline.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
