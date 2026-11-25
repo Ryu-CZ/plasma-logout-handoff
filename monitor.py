@@ -75,9 +75,12 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     wait_for(b"LOGOUT_VM_SETUP_OK", 60)
     time.sleep(3)
     execute("screendump", filename=str(results / "initial-greeter.ppm"))
-    for key in ("p", "r", "o", "b", "e", "ret"):
-        execute("send-key", keys=[{"type": "qcode", "data": key}], **{"hold-time": 35})
-        time.sleep(.07)
+    def sign_in():
+        for key in ("p", "r", "o", "b", "e", "ret"):
+            execute("send-key", keys=[{"type": "qcode", "data": key}], **{"hold-time": 35})
+            time.sleep(.07)
+
+    sign_in()
 
     command('g=$(id -u plasmalogin); u=$(id -u probe); '
             'for i in {1..120}; do '
@@ -95,31 +98,54 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     wait_for(b"LOGOUT_VM_CONDITION_OK", 20)
     execute("screendump", filename=str(results / "desktop.ppm"))
 
+    # Wait for a new greeter connection, not a fixed delay after sampling.
+    command('before=$(journalctl -b -u plasmalogin.service --no-pager -o cat '
+            '| grep -Fc "Message received from greeter: Connect"); '
+            '[[ $before -ge 1 ]] && echo LOGOUT_VM_BASELINE_READY')
+    wait_for(b"LOGOUT_VM_BASELINE_READY", 5)
     with (results / "frames.tsv").open("w") as times, ThreadPoolExecutor(1) as worker:
         start = time.monotonic()
         command(f'[[ $(systemctl show "user@$g.service" -p ActiveState --value) == {expected} ]] && '
                 'logger -t logout-vm LOGOUT_REQUEST && '
                 'runuser -u probe -- busctl --address="unix:path=/run/user/$u/bus" '
                 'call org.kde.Shutdown /Shutdown org.kde.Shutdown logout '
-                '&& printf "\\nLOGOUT_VM_REQUEST_OK\\n"')
-        # The guest TTY can block while echoing if the serial socket isn't read.
-        requested = worker.submit(wait_for, b"LOGOUT_VM_REQUEST_OK", 10)
+                '&& for i in {1..120}; do '
+                'count=$(journalctl -b -u plasmalogin.service --no-pager -o cat '
+                '| grep -Fc "Message received from greeter: Connect"); '
+                'if [[ $count -gt $before ]]; '
+                'then printf "\\nLOGOUT_VM_GREETER_RETURNED\\n"; break; fi; sleep .05; done')
+        # Drain serial concurrently so guest TTY output cannot stall logout.
+        returned = worker.submit(wait_for, b"LOGOUT_VM_GREETER_RETURNED", 10)
+        attempted = False
         for index in range(175):
+            if returned.done() and not attempted:
+                returned.result()
+                # The greeter connection precedes its input field becoming ready.
+                time.sleep(.8)
+                sign_in()
+                attempted = True
             before = time.monotonic()
             name = f"frame-{index:03}.png"
             execute("screendump", filename=str(results / name), format="png")
             after = time.monotonic()
             print(f"{name}\t{before-start:.6f}\t{after-start:.6f}", file=times)
             time.sleep(max(0, .04 - (after - before)))
-        requested.result()
-    command('for i in {1..40}; do '
-            'if [[ $(loginctl show-seat seat0 -p ActiveSession --value) != "$s" ]] '
-            '&& pgrep -u "$g" -x plasma-login-gr >/dev/null; '
-            'then echo LOGOUT_VM_GREETER_RETURNED; break; fi; sleep .25; done')
-    wait_for(b"LOGOUT_VM_GREETER_RETURNED", 12)
-    command('journalctl -b --no-pager -o short-monotonic '
+        returned.result()
+        if not attempted:
+            raise RuntimeError("Greeter returned outside the sampling window")
+    command('result=failed; for i in {1..40}; do '
+            'n=$(loginctl show-seat seat0 -p ActiveSession --value); '
+            'if [[ $n != "$s" && $(loginctl show-session "$n" -p Name --value 2>/dev/null) == probe '
+            '&& $(loginctl show-session "$n" -p Service --value 2>/dev/null) == plasmalogin ]] '
+            '&& pgrep -u "$u" -x plasmashell >/dev/null; '
+            'then result=passed; break; fi; sleep .25; done; '
+            'echo "LOGOUT_VM_RELOGIN=$result"; '
+            'journalctl -b --no-pager -o short-monotonic '
             '_SYSTEMD_UNIT=plasmalogin.service + "UNIT=user@$g.service" '
             '+ SYSLOG_IDENTIFIER=plasmalogin-helper + SYSLOG_IDENTIFIER=logout-vm '
             '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service; '
             'echo LOGOUT_VM_DONE')
-    wait_for(b"LOGOUT_VM_DONE", 10)
+    wait_for(b"LOGOUT_VM_DONE", 20)
+    report = (results / "serial.log").read_bytes()
+    if b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
+        raise RuntimeError("Did not reach a new desktop after logout; see serial.log")

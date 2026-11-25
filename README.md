@@ -3,7 +3,8 @@
 Investigate the black interval and DisplayPort flicker when Plasma Wayland
 signs out to Plasma Login Manager on CachyOS (Plasma 6.8.3). This is separate
 from the [login](../plasma-login-handoff) and [lock](../plasma-lock-handoff)
-handoffs. No changes to the live setup.
+handoffs. See [the long-term plan](PLAN.md). No persistent changes to the
+live setup.
 
 ## Baseline
 
@@ -122,6 +123,18 @@ returned and did not test rapid re-login.
 After reboot, normal sign-in succeeded, the greeter user manager was
 inactive in the desktop session, and the existing patched desktop KWin
 was still selected. No persistent configuration or lingering was added.
+
+### VM re-login coverage
+
+The runner now signs back in after the second greeter connects, allowing
+800 ms for its password field to appear before sending keys. This is test
+driver pacing, not a delay added to Plasma. The `cold-roundtrip-1795617733`
+and `warm-roundtrip-1795617733` runs each logged two successful PLM
+authentications and reached a new active desktop session with plasmashell
+running. Neither logged a conflicting start/stop transaction. This is one
+pass per condition; the physical failure is not reproduced by the
+unmodified guest. The next test should deliberately widen the overlap
+with a delayed stop in the guest only.
 
 For local timing (no sudo, if the current user can read the system journal):
 
