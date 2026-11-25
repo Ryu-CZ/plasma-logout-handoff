@@ -485,9 +485,49 @@ measured Xorg startup, and the Wayland VM comparison found no shorter
 visible gap and did not model the physical NVIDIA path. Nothing here
 justifies changing session ordering or forcing an Xorg driver or mode.
 
-If further physical testing is warranted, first capture a normal
-stock logout with an externally started, read-only monitor for the
-actual active VT and output timing. Align a camera time reference with
+#### Synchronized stock capture (21:10)
+
+A read-only sampler ran as a root transient unit (50 ms loop) during
+one stock logout at 4K 144 Hz while the user filmed the monitor
+(`video_2026-11-25_21-11-28.mp4`, reviewed at 10 samples/s):
+
+| Boot clock | Event |
+| ---: | --- |
+| 13557.059 | Plasma shutdown service started |
+| 13557.775 | Desktop KWin exited |
+| 13557.792 | SDDM launched Xorg on VT 2 |
+| ≤13558.72 | tty1 DRM state still reported 144 Hz |
+| 13558.72 | Active VT 2, mode unavailable |
+| 13559.31 | Xrandr reports 4K 60 Hz in the greeter's Xorg |
+| 13559.480 | Greeter connected |
+
+| Clip time | Visible |
+| --- | --- |
+| 17.1–17.7 s | Logout dialog |
+| 17.8–18.1 s | Desktop wallpaper, windows closed |
+| 18.2–19.2 s | Dark grey, backlight visibly on, cursor dot |
+| 19.3 s | Faint red at the bottom edge (one frame) |
+| 19.4–20.8 s | Fully black, backlight visibly off |
+| 20.9 s | Dark, backlight on |
+| 21.0 s | Breath greeter |
+
+The camera clock was not aligned to the journal. Anchoring the greeter
+frame to greeter connect, the backlight-off phase (~1.5 s) matches
+KWin exit → greeter connect (1.70 s). It therefore starts around desktop
+KWin's exit, not at the later VT switch or 60 Hz modeset. That points
+to the monitor losing a usable signal, or blanking itself, from when
+the desktop releases the output until Xorg drives it again. The
+backlit dark grey phase before it is the outgoing session. This is one
+run with an inferred alignment; the sampler logged mode, not CRTC
+`active`, so it does not prove the output was disabled at KWin exit.
+
+Implications: the wallpaper hook acts after the dark phase, so it
+cannot hide it. Matching refresh rates removes the later 60 Hz modeset
+but not a gap between DRM masters, consistent with the earlier
+subjective 60 Hz result. `nvidia_drm` has `modeset=Y fbdev=Y`.
+
+To repeat it, first capture a normal stock logout with an externally
+started, read-only monitor for the actual active VT and output timing. Align a camera time reference with
 the host journal, and capture monitor-side signal status if available.
 Test a change only if that capture gives a specific hypothesis, with
 local user participation and rollback prepared. Check immediate
