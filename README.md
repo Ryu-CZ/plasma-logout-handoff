@@ -347,6 +347,18 @@ Manjaro installation or physical GPU. Only the VM receives packages.
 This establishes a shared Plasma desktop ordering issue under slow
 teardown. The PLM greeter-specific patch is not needed on this SDDM path.
 
+In the continuous stock capture (`sddm-continuous-1795632701`),
+Xorg was ready 241 ms after desktop KWin stopped and the greeter
+connected another 99 ms later. Sample 011 showed a dark console-like
+frame, 012–015 were fully black, and 016 showed the greeter. In the
+`SDDM_VM_RETRO=1` run (`sddm-retro-1795632745`), earlier black samples
+remained, but Xorg's stippled root appeared in samples 013–019 before
+the greeter at 020. KWin stop to Xorg ready was 238 ms, then another
+112 ms to greeter connection. Both runs passed re-login. The stipple
+is a diagnostic, not a visual improvement; it shows that changing
+Xorg's first background can affect the incoming portion, not the
+earlier gap. Frame indices are not synchronized to the guest journal.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash

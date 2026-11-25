@@ -146,14 +146,19 @@ with (connect("serial") as serial, connect("qmp") as qmp,
         # Drain serial concurrently so guest TTY output cannot stall logout.
         returned = worker.submit(wait_for, b"LOGOUT_VM_GREETER_RETURNED", 22)
         attempted = False
+        keys = iter(("p", "r", "o", "b", "e", "ret"))
+        next_key = None
         for index in range(450 if os.environ.get("LOGOUT_VM_STOP_FIX") else 175):
-            if returned.done() and not attempted:
+            if returned.done() and next_key is None:
                 if returned.exception():
                     break
-                # The greeter connection precedes its input field becoming ready.
-                time.sleep(.8)
-                sign_in()
-                attempted = True
+                # Allow the password field to appear without interrupting captures.
+                next_key = time.monotonic() + .8
+            if next_key is not None and not attempted and time.monotonic() >= next_key:
+                key = next(keys)
+                execute("send-key", keys=[{"type": "qcode", "data": key}], **{"hold-time": 35})
+                next_key = time.monotonic() + .07
+                attempted = key == "ret"
             before = time.monotonic()
             name = f"frame-{index:03}.png"
             execute("screendump", filename=str(results / name), format="png")
