@@ -57,8 +57,22 @@ proposing installation.
    greeter and sign-in. Restore and verify both original settings even
    if the test fails. If the timing stays constant but flicker remains,
    mode switching alone does not explain it.
-4. **Validate on the real display only after isolated passes.** Use a
-   reversible test with no lingering or service replacement. Verify
-   immediate re-login, lock/unlock and the existing login handoff.
-   Withdraw the test if startup reliability regresses; keep a shorter
-   but not perfectly seamless logout only if the benefit is visible.
+4. **Validate on the real display only after isolated passes.** Keep the
+   two experiments separate:
+   - **CachyOS / PLM:** At 100 Hz, try the temporary greeter-only sysfs
+     generator override with automatic removal. Measure cold manager
+     startup and greeter return; neither a shorter delay nor a greeter
+     wallpaper proves the intermediate modeset is gone.
+   - **Manjaro / SDDM:** Keep X11 and test a temporary Xsetup wallpaper
+     using a matching static asset. Preserve the existing hook and
+     authentication. Roll back if it adds a visible transition or
+     fails to improve the measured baseline. The Xorg startup gap is
+     outside this hook's reach.
+
+   Do not pre-start a user manager or replace display-manager services.
+   First compare visuals with a deliberate pause before re-login; do
+   not present that as immediate re-login coverage. Validate rapid
+   re-login separately with a reviewed teardown fix and a recovery
+   path, alongside lock/unlock and the existing login handoff. Restore
+   original settings unless the user explicitly chooses to keep a
+   verified change.
