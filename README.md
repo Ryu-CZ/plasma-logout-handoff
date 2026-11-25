@@ -526,8 +526,37 @@ cannot hide it. Matching refresh rates removes the later 60 Hz modeset
 but not a gap between DRM masters, consistent with the earlier
 subjective 60 Hz result. `nvidia_drm` has `modeset=Y fbdev=Y`.
 
-To repeat it, first capture a normal stock logout with an externally
-started, read-only monitor for the actual active VT and output timing. Align a camera time reference with
+#### Output state capture (21:25)
+
+`loki-logout-capture2.sh` (20 ms loop, root, read-only) logged the
+DP-3 CRTC `enable/active` from DRM debugfs plus sysfs `dpms`/`enabled`
+for two stock logouts. In the second, `HOLD=1` also kept
+`/dev/dri/card2` open without becoming master, to test whether the
+blank was the last-close fbdev restore.
+
+| Event | Stock | Fd held |
+| --- | ---: | ---: |
+| Desktop KWin exited | 14478.52 | 14612.60 |
+| Active VT 2, CRTC still `active=1` 144 Hz | 14479.43 | 14613.52 |
+| CRTC detached, `dpms=Off` | 14479.46 | 14613.54 |
+| Greeter connected | 14480.32 | 14614.38 |
+
+The output stays lit for ~0.9 s after KWin exits (the backlit dark
+grey phase), then is switched off within ~30 ms of the VT switch,
+i.e. when Xorg's NVIDIA driver takes the VT. Holding an fd changed
+nothing, so last-close is not the cause. After that the NVIDIA X
+driver drives the head outside the atomic state debugfs shows, so the
+relight time is not visible here; the video puts it at greeter paint.
+
+Consequence for an image holder: on the X11 greeter path the blank is
+caused by the incoming Xorg/NVIDIA takeover itself, which no holder
+running before it can prevent. A holder is only plausible if the
+greeter uses KMS like the desktop (SDDM Wayland greeter); whether a
+KMS→KMS master change on this driver keeps the CRTC lit must be
+measured physically, since the VM cannot model it.
+
+To repeat the stock capture, use an externally started, read-only
+monitor for the actual active VT and output timing. Align a camera time reference with
 the host journal, and capture monitor-side signal status if available.
 Test a change only if that capture gives a specific hypothesis, with
 local user participation and rollback prepared. Check immediate
