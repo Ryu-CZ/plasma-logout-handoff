@@ -29,16 +29,39 @@ the greeter's first frame cannot on its own cover that interval. A mode
 change or link retrain may still account for a separate blink. The desktop
 uses DP-1 at 4K/100 Hz; the live greeter mode has not yet been measured.
 
+## Physical phone recording
+
+The clip shows the logout confirmation UI first (about 6.5 s), then a
+return to desktop content. Near the end it shows two separate dark
+intervals. At 0.25 s sampling, the progression is:
+
+| Clip time | Visible |
+| --- | --- |
+| 13.75 s | Sharp desktop wallpaper |
+| 14.00–15.50 s | Very dark, with faint shapes |
+| 15.75–17.25 s | Brighter blue/blurred-looking image without controls |
+| 17.50–19.25 s | Very dark again, with faint shapes |
+| 19.50 s onward | Vandal login greeter |
+
+No obvious input or “No signal” banner was visible in these samples.
+Camera exposure, dark content and signal state cannot be distinguished
+from the clip alone. The journal for this logout shows 3.25 s from Plasma
+starting its shutdown service to desktop KWin exit, another 2.45 s to
+the VT switch, and 0.88 s more to the greeter connecting. The recording
+has no precise journal clock alignment, so these events don't identify
+the cause of either individual dark interval. The video is not committed.
+
 ## Next checks
 
-1. Capture a physical logout without recording credentials. Note any monitor
-   input banner or “No signal” message and where any blink occurs relative to
-   greeter appearance. The absence of a banner does not rule out a signal drop.
-2. Compare saved greeter output settings and, if needed, actual display mode
-   across a logout. Don't sync or change settings before taking a baseline.
-3. In a disposable VM, reproduce the return path and compare cold versus
-   already-running greeter user-manager startup. Measure before considering
-   a live change. A shorter startup does not establish glitch-free scanout.
+1. Compare saved greeter output settings and, if needed, actual display
+   mode across a logout. Don't sync or change settings before comparing.
+2. Reproduce the return in a disposable VM and compare cold versus
+   already-running greeter user-manager startup. If the result warrants a
+   physical test, temporarily pre-start just the greeter's user manager,
+   not a greeter session or compositor. Don't change seat ownership or
+   enable persistent lingering for a timing experiment.
+3. Check whether the shortened startup removes either dark interval.
+   A shorter startup does not establish glitch-free scanout.
 
 For local timing (no sudo, if the current user can read the system journal):
 
