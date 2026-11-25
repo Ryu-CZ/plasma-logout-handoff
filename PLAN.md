@@ -67,7 +67,9 @@ proposing installation.
      using a matching static asset. Preserve the existing hook and
      authentication. Roll back if it adds a visible transition or
      fails to improve the measured baseline. The Xorg startup gap is
-     outside this hook's reach.
+     outside this hook's reach. The hook-enabled phone clip still shows
+     a blackout, and the hook was rolled back. Keep stock Xsetup unless
+     a comparable recording shows a useful improvement.
 
    Do not pre-start a user manager or replace display-manager services.
    First compare visuals with a deliberate pause before re-login; do
