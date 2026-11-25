@@ -324,6 +324,20 @@ The CachyOS generator was absent. Different GPU wiring, login manager,
 and greeter backend make this a comparison, not a controlled A/B.
 No changes were applied on Manjaro.
 
+A second, read-only physical capture measured **4K 144 → 60 → 144 Hz**:
+the desktop had a 1328.8 MHz DRM pixel clock before and after logout;
+Xrandr marked 60 Hz current in the X11 greeter. The intervening DRM mode
+was unavailable at some samples. The user saw one uniform black interval,
+not the distinct phases observed on CachyOS. Re-login worked. This
+confirms an endpoint refresh mismatch on Manjaro, not a measured link
+drop or a causal explanation for the black interval.
+
+Before adding a wallpaper hook, compare with the desktop temporarily
+at the monitor's preferred 4K 60 Hz, leaving SDDM untouched. Verify the
+actual timing on both sides and restore 144 Hz after login. If black
+remains with matched timings, a wallpaper hook still cannot cover the
+earlier Xorg initialization gap.
+
 #### SDDM rapid re-login in the VM
 
 Run `SDDM_VM_PACKAGES=DIR bash run-vm.sh BASE NEW_RESULTS sddm`.
