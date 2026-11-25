@@ -215,6 +215,21 @@ establish scanout or say anything about the physical DisplayPort link.
 The physical desktop is 3840×2160 at 100 Hz; its output advertises 60 Hz
 as preferred. The actual greeter mode and DP link state remain unknown.
 
+### Combined login and lock regression
+
+`warm-combined-1795618921` ran the patched starters with the existing
+combined desktop KWin, private screen locker, wallpaper producer and
+wallpaper-only login splash. It used a synthetic wallpaper and the stock
+VM greeter theme, not the physical theme or photo. With the six-second
+injected stop, re-login reached a new desktop, the D-Bus lock state
+changed to active, and a password entered via QMP unlocked it.
+This is functional coexistence in the VM, not physical visual acceptance.
+
+To reproduce, stage `bin/`, `lib/`, and `share/` from the lock prefix in
+a temporary directory, overlay the login prefix's KWin binaries and
+`libkwin.so.6`, and pass that directory as `LOGOUT_VM_COMBINED`. Use
+`LOGOUT_VM_STOP_FIX` and `LOGOUT_VM_DELAY_STOP=1` as above.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash

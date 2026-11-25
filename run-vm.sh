@@ -12,7 +12,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
 mkdir "$tmp/vm"
 ln -s "$login/vm/run.sh" "$tmp/vm/"
-if [[ -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-} ]]; then
+if [[ -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_COMBINED:-} ]]; then
     # Insert guest-only configuration just before PLM starts.
     while IFS= read -r line; do
         if [[ $line == 'systemctl start plasmalogin.service' ]]; then
@@ -22,6 +22,16 @@ if [[ -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-} ]]; then
                     base64 "$LOGOUT_VM_STOP_FIX/$name"
                     printf 'LOGOUT_VM_BINARY\ninstall -m 755 /tmp/logout-vm-starter /usr/bin/%s\n' "$name"
                 done
+            fi
+            if [[ -n ${LOGOUT_VM_COMBINED:-} ]]; then
+                printf "install -d -m755 /opt/logout-vm-combined\nbase64 -d <<'LOGOUT_VM_COMBINED_PAYLOAD' | tar -xzf - -C /opt/logout-vm-combined\n"
+                tar -chzf - -C "$LOGOUT_VM_COMBINED" bin lib share | base64
+                printf 'LOGOUT_VM_COMBINED_PAYLOAD\n'
+                printf '%s\n' \
+                    'd=/opt/logout-vm-combined; chmod -R a+rX "$d"' \
+                    'mkdir -p /etc/systemd/user/{plasma-kwin_wayland,plasma-plasmashell}.service.d' \
+                    'printf "%s\\n" "[Service]" "ExecStart=" "ExecStart=$d/bin/kwin_wayland_wrapper --xwayland" "Environment=PATH=$d/bin:/usr/bin LD_LIBRARY_PATH=$d/lib KWIN_LOGIN_VM_WALLPAPER=$image KWIN_EXPERIMENTAL_MANAGED_LOCK_WALLPAPER=1 KSCREENLOCKER_EXPERIMENTAL_WALLPAPER_UNDERLAY=1" >/etc/systemd/user/plasma-kwin_wayland.service.d/90-logout-vm-combined.conf' \
+                    'printf "%s\\n" "[Service]" "ExecStart=" "ExecStart=$d/bin/plasmashell --no-respawn" "Environment=LD_LIBRARY_PATH=$d/lib XDG_DATA_DIRS=$d/share:/usr/share PLASMA_EXPERIMENTAL_MANAGED_LOCK_WALLPAPER=1" >/etc/systemd/user/plasma-plasmashell.service.d/90-logout-vm-combined.conf'
             fi
             if [[ -n ${LOGOUT_VM_GREETER_MARKER:-} ]]; then
                 printf '%s\n' \

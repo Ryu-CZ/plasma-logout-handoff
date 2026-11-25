@@ -91,10 +91,13 @@ with (connect("serial") as serial, connect("qmp") as qmp,
         wait_for(b"LOGOUT_VM_BARRIER_INSTALLED", 10)
     time.sleep(5 if os.environ.get("LOGOUT_VM_GREETER_MARKER") else 3)
     execute("screendump", filename=str(results / "initial-greeter.ppm"))
+    def press(key):
+        execute("send-key", keys=[{"type": "qcode", "data": key}], **{"hold-time": 35})
+        time.sleep(.07)
+
     def sign_in():
         for key in ("p", "r", "o", "b", "e", "ret"):
-            execute("send-key", keys=[{"type": "qcode", "data": key}], **{"hold-time": 35})
-            time.sleep(.07)
+            press(key)
 
     sign_in()
 
@@ -180,3 +183,21 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     report = (results / "serial.log").read_bytes()
     if not attempted or b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
         raise RuntimeError("Did not reach a new desktop after logout; see serial.log")
+    if os.environ.get("LOGOUT_VM_COMBINED"):
+        command('saver() { runuser -u probe -- busctl --address="unix:path=/run/user/$u/bus" '
+                'call org.freedesktop.ScreenSaver /org/freedesktop/ScreenSaver '
+                'org.freedesktop.ScreenSaver "$1"; }; '
+                'saver Lock && for i in {1..40}; do '
+                'if [[ $(saver GetActive) == "b true" ]]; '
+                'then printf "\\nLOGOUT_VM_LOCKED\\n"; break; fi; sleep .25; done')
+        wait_for(b"LOGOUT_VM_LOCKED", 15)
+        time.sleep(2)
+        execute("screendump", filename=str(results / "locked.ppm"))
+        press("ret")  # Dismiss the lock clock before entering the VM password.
+        time.sleep(.8)
+        sign_in()
+        command('for i in {1..40}; do '
+                'if [[ $(saver GetActive) == "b false" ]]; '
+                'then printf "\\nLOGOUT_VM_UNLOCKED\\n"; break; fi; sleep .25; done')
+        wait_for(b"LOGOUT_VM_UNLOCKED", 15)
+        execute("screendump", filename=str(results / "unlocked.ppm"))
