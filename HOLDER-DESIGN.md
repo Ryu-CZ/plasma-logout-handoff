@@ -25,6 +25,17 @@ greeter's input or credentials. Start a bounded deadline at handoff;
 on failure discard the handoff and return to the stock display-manager
 path. A visible blink on fallback is preferable to an unusable seat.
 
+### Can the holder stay on a separate VT?
+
+Guest run `vt-owner-1795642476` switched from the Plasma VT to an
+unused text VT and back, without logging out. DRM debugfs reported
+the master client under systemd-logind on VT 1, no master client on
+VT 9, then the original logind client again on VT 1. KWin returned
+with the same PID but new DRM clients. Subsequent logout/re-login
+passed. Keeping KWin alive on its own inactive VT therefore does not
+keep the seat's master active in this VM. This test does not measure
+retained scanout pixels or NVIDIA behavior.
+
 ## Backend comparison is not a holder trial
 
 A stock Wayland greeter is a separate diagnostic. SDDM 0.21.0

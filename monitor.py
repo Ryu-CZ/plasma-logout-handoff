@@ -176,6 +176,15 @@ with (connect("serial") as serial, connect("qmp") as qmp,
             raise RuntimeError("black sample between holder and successor")
         sys.exit(0)
 
+    if os.environ.get("LOGOUT_VM_VT_PROBE") == "1":
+        command('v=$(fgconsole); k=$(pgrep -u "$u" -x kwin_wayland | head -1); '
+                'snap() { echo "VT_PROBE $1 vt=$(fgconsole) kwin=$k"; '
+                'for f in /sys/kernel/debug/dri/*/clients; do '
+                'test -f "$f" && awk -v pid="$k" '
+                """'NR==1 || $4=="y" || $2==pid' "$f"; done; }; """
+                'snap before; chvt 9 && sleep 1 && snap away; '
+                'chvt "$v" && sleep 1 && snap back && printf "\\nVT_PROBE_DONE\\n"')
+        wait_for(b"VT_PROBE_DONE", 15)
     # Wait for a new greeter connection, not a fixed delay after sampling.
     command('before=$(journalctl -b -u "$dm.service" --no-pager -o cat '
             '| grep -Fc "Message received from greeter: Connect"); '
