@@ -39,3 +39,19 @@ including a greeter that starts but never produces a frame. For the
 holder prototype, compare continuous visible frames against stock,
 then verify timeout recovery, immediate re-login and lock/unlock.
 Do not infer NVIDIA scanout continuity from the VM.
+
+## Baseline and first prototype boundary
+
+The fresh stock SDDM VM run `holder-stock-1795640054` captured
+175 frames. Its serial log confirms password authentication and a
+new Plasma Wayland session after logout. Keep those frames as the
+stock reference; the run did not exercise holder recovery.
+
+For the first prototype, keep the outer compositor alive and use
+two synthetic producers with unmistakable colors. Shut down the
+first producer only after the wallpaper is presented; delay the
+second producer and then allow its first frame. Sample the outer
+output throughout. Repeat without the holder, and with the second
+producer stalled past the timeout. A successful synthetic run is
+only a frame-switch test: it cannot satisfy the SDDM authentication
+or seat-isolation checks.
