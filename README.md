@@ -434,8 +434,11 @@ stock wallpaper. Xorg took 1.55 s to reach Xsetup; the hook then took
 154 ms, and the greeter connected 155 ms after the draw was logged.
 Sign-in succeeded after the deliberate pause; this is not a rapid
 re-login or lock/unlock test. The draw log confirms the hook succeeded,
-not that the wallpaper was visible on the monitor. Visual observation
-and verification of the automatic rollback are pending.
+not that the wallpaper was visible on the monitor. The user was unsure
+whether it appeared before the controls. Automatic rollback restored
+Xsetup byte-for-byte and removed the temporary helper; 144 Hz remained
+selected. A stock-versus-hook recording is needed to compare the
+visible frames.
 
 For local timing (no sudo, if the current user can read the system journal):
 
