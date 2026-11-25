@@ -443,10 +443,17 @@ The requested phone clip from the hook-enabled `loki` trial
 (`video_2026-11-25_20-26-33.mp4`) shows a visibly black sample before
 the Breath greeter and black samples again after sign-in, before the
 desktop returns (reviewed at one frame per second). The hook did not
-eliminate the pre-greeter blackout. Without a comparable stock clip,
-we cannot say whether it shortened the blackout. The clip does not
-establish signal loss versus rendered black, immediate re-login, or
-lock/unlock behavior.
+eliminate the pre-greeter blackout.
+
+Compared at 10 samples/s, the stock clip
+(`video_2026-11-25_20-42-24.mp4`) looks black from about 8.4 to 10.0 s
+(1.6 s); the hook clip looks black from about 11.6 to 13.2 s (1.6 s),
+followed by a brief dim non-black frame before Breath appears. These
+are clip-relative visual estimates from one run per configuration, not
+link measurements. The comparison shows no meaningful reduction in
+the visible logout blackout, so keep stock Xsetup. The videos do not
+distinguish signal loss from rendered black. Sign-in visuals are out
+of scope; immediate re-login and lock/unlock remain regression checks.
 
 For local timing (no sudo, if the current user can read the system journal):
 
