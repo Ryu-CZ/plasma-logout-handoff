@@ -111,6 +111,19 @@ old/new CRTC active and primary-plane FB state (including atomic
 property-blob paths), and distinguish test-only from real commits.
 Do not infer NVIDIA behavior or visual black from this guest trace.
 
+## Guest trace: committed state samples
+
+`state-1795643557` (`LOGOUT_VM_KMS_STATE=1 SDDM_VM_WAYLAND=1`)
+sampled DRM debugfs with 5 ms sleeps and monotonic read boundaries.
+Plane 36 was attached to CRTC 38 with FB 46 before the logout request
+at 19.709867 s. The first changed sample showed FB 44 at 19.896950,
+then FB 42 by 19.931876 and FB 47 by 20.283064. The greeter connected
+at 20.301475 and re-login passed. No sample during this handoff showed
+the controller disabled or the plane detached. Sampling can miss short
+transitions; FB IDs don't identify content or the committing process.
+In this VM, compare the captured pixels against those transitions
+before chasing a controller disable. This is not an NVIDIA DP trace.
+
 ## Physical stock Wayland diagnostic
 
 On Nov 25, logind recorded Wayland SDDM greeter sessions and the

@@ -195,6 +195,22 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 '>> "$t/kprobe_events" && echo 1 > "$t/events/kprobes/kms_set_mode/enable" '
                 '&& printf "\\nKMS_TRACE_READY\\n"')
         wait_for(b"KMS_TRACE_READY", 5)
+    if os.environ.get("LOGOUT_VM_KMS_STATE") == "1":
+        sampler = """import re, time
+from pathlib import Path
+state = Path('/sys/kernel/debug/dri/0/state')
+with open('/tmp/kms-state', 'w', buffering=1) as out:
+    print('\\nKMS_STATE_READY', flush=True)
+    for _ in range(600):
+        start = time.monotonic()
+        fields = re.findall(r'^(plane\\[.*|crtc\\[.*|\\s*(?:crtc|fb|enable|active)=.*)$',
+                            state.read_text(), re.M)
+        print(f'{start:.6f} {time.monotonic():.6f}', *(f.strip() for f in fields), file=out)
+        time.sleep(.005)
+"""
+        payload = base64.b64encode(sampler.encode()).decode()
+        command(f'echo {payload} | base64 -d >/tmp/sample-state.py; python3 /tmp/sample-state.py &')
+        wait_for(b"KMS_STATE_READY", 8)
     # Wait for a new greeter connection, not a fixed delay after sampling.
     command('before=$(journalctl -b -u "$dm.service" --no-pager -o cat '
             '| grep -Fc "Message received from greeter: Connect"); '
@@ -258,6 +274,10 @@ with (connect("serial") as serial, connect("qmp") as qmp,
         command('echo 0 > "$t/events/kprobes/kms_set_mode/enable"; '
                 'grep kms_set_mode "$t/trace" | tail -100; printf "\\nKMS_TRACE_END\\n"')
         wait_for(b"KMS_TRACE_END", 10)
+    if os.environ.get("LOGOUT_VM_KMS_STATE") == "1":
+        command("""awk '{s=$0; sub(/^[^ ]+ [^ ]+ /,"",s); if (s!=last || NR==1) print "KMS_STATE",$0; last=s} END {print "KMS_LAST",$0}' /tmp/kms-state; """
+                'printf "\\nKMS_STATE_END\\n"')
+        wait_for(b"KMS_STATE_END", 10)
     report = (results / "serial.log").read_bytes()
     if not attempted or b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
         raise RuntimeError("Did not reach a new desktop after logout; see serial.log")
