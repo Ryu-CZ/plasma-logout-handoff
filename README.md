@@ -312,7 +312,9 @@ a temporary directory, overlay the login prefix's KWin binaries and
 On a second machine (Manjaro, Plasma/KWin 6.8.2, SDDM 0.21.0),
 the desktop ran Wayland and SDDM used an X11 greeter. The monitor
 was connected directly to the NVIDIA-driven output. The user saw
-one brief black screen on normal logout and signed back in.
+one brief black screen on normal logout, no “No signal” message,
+and signed back in. The absence of that message does not rule out a
+brief interruption.
 SDDM's greeter connected 1.757 s after desktop KWin stopped.
 The sampled connector remained connected, although its enabled flag
 went from enabled on the old desktop to disabled on the greeter VT
