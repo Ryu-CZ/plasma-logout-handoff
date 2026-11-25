@@ -440,9 +440,26 @@ same boot's monotonic clock, rounded to milliseconds.
 | 20:25:41 | Stock | 657 ms | 17 ms | 1582 ms | 169 ms |
 | 20:41:39 | Stock | 675 ms | 17 ms | 1550 ms | 163 ms |
 
-SDDM selected VT 2 just before launching Xorg. This is a requested
-VT, not a timestamp for activation or scanout. The two retained stock
-Xorg logs both show an 886–887 ms gap after applying the NVIDIA
+SDDM selected VT 2 just before launching Xorg. That log records the
+requested VT. Earlier stock captures used a sampler that read the
+actual active VT from `/sys/class/tty/tty0/active`. Their boot-relative
+timestamps show that activation preceded mode availability and greeter
+connection in both comparisons:
+
+| Outgoing desktop | Xorg launch | Active VT 2, mode unavailable | VT 2, Xrandr reports 4K 60 Hz | Greeter connect |
+| --- | ---: | ---: | ---: | ---: |
+| 4K 144 Hz | 9844.253 | 9845.22 | 9845.84 | 9845.979 |
+| 4K 60 Hz | 10117.367 | 10118.30 | 10118.94 | 10119.138 |
+
+The VT/mode columns use the sampler's loop timestamps, not journal
+receipt times. The 60 Hz lines reached the journal before greeter
+connect in both runs. A mode being unreadable is not evidence that
+scanout stopped, and Xrandr reporting a mode is not evidence of an
+already visible frame. These samples do not identify the exact VT
+switch instant, first visible frame, or link state.
+
+Separately, the two retained stock Xorg logs both show an 886–887 ms
+gap after applying the NVIDIA
 OutputClass and before logging the autoconfigured driver list. The
 driver logged setting the mode about 1.14 s after launch. Neither
 landmark measures link training or tells us which operation caused
