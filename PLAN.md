@@ -32,6 +32,15 @@ proposing installation.
    desktop/greeter mode and DP connector state. A wallpaper frame can
    replace rendered black, not a lost link. Don't design around a
    physical mode mismatch until one has been measured.
+
+   The physical capture found 100 → 60 → 100 Hz. For the A/B, use
+   DP-1's preferred 4K timing (59.997 Hz, 533.25 MHz), not the other 4K
+   60 Hz timing (594 MHz). Record the original desktop mode and back up
+   the greeter output config byte-for-byte. Change only DP-1's mode;
+   verify the desktop timing before logout, then sample through the
+   greeter and sign-in. Restore and verify both original settings even
+   if the test fails. If the timing stays constant but flicker remains,
+   mode switching alone does not explain it.
 4. **Validate on the real display only after isolated passes.** Use a
    reversible test with no lingering or service replacement. Verify
    immediate re-login, lock/unlock and the existing login handoff.
