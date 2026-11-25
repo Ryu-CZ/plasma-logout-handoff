@@ -14,7 +14,10 @@ framebuffer on an active controller; tracing framebuffer close alone
 will not explain the entire visible gap. On physical stock X11 the
 controller detached near the VT change. The VM is therefore a test
 bed for content continuity, not a reproduction of the monitor going
-dark. Pursue a small producer-to-greeter handoff only if it can both
+dark. A one-shot guest fbdev preload (`preload-1795644288`) appeared in two
+screenshots but went black again before the greeter. Do not pursue
+preloading the console or repeatedly repainting a VT as the solution.
+Pursue a small producer-to-greeter handoff only if it can both
 present a trusted frame and preserve the output through takeover.
 If the incoming backend disables the physical output regardless,
 stop that path. Treat a system compositor as a separate architecture

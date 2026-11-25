@@ -195,6 +195,23 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 '>> "$t/kprobe_events" && echo 1 > "$t/events/kprobes/kms_set_mode/enable" '
                 '&& printf "\\nKMS_TRACE_READY\\n"')
         wait_for(b"KMS_TRACE_READY", 5)
+    if os.environ.get("LOGOUT_VM_PAINT_FBCON") == "1":
+        # Preload the disposable guest's fbdev backing store; do not change VT.
+        paint = """from pathlib import Path
+root = Path('/sys/class/graphics/fb0')
+height = int((root / 'virtual_size').read_text().split(',')[1])
+size = int((root / 'stride').read_text()) * height
+assert 0 < size <= 64 * 1024 * 1024
+data = b'\\x77' * size
+with open('/dev/fb0', 'r+b', buffering=0) as fb:
+    assert fb.write(data) == size
+    fb.seek(0)
+    assert fb.read(size) == data
+print('FBCON_PRELOADED')
+"""
+        payload = base64.b64encode(paint.encode()).decode()
+        command(f'echo {payload} | base64 -d | python3')
+        wait_for(b"FBCON_PRELOADED", 8)
     if os.environ.get("LOGOUT_VM_KMS_STATE") == "1":
         sampler = """import re, time
 from pathlib import Path
