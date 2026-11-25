@@ -245,6 +245,13 @@ intermediate timing (match the pixel clock, not just the refresh
 label), then restore 100 Hz. That would test how much flicker the mode
 changes explain; it would not change the cold greeter startup delay.
 
+The 60 Hz comparison sampled the same 533.25 MHz timing on the old
+desktop VT, greeter VT, and new desktop VT. Greeter connection was
+3.237 s after desktop KWin stopped, versus 3.372 s at 100 Hz. Re-login
+succeeded. The desktop returned to 100 Hz (1188 MHz verified in DRM
+state) and the greeter configuration was restored byte-for-byte.
+The user's visual observation for this comparison is pending.
+
 ### Combined login and lock regression
 
 `warm-combined-1795618921` ran the patched starters with the existing
