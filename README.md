@@ -359,6 +359,15 @@ is a diagnostic, not a visual improvement; it shows that changing
 Xorg's first background can affect the incoming portion, not the
 earlier gap. Frame indices are not synchronized to the guest journal.
 
+`SDDM_VM_ROOT_COLOR=1` tests the supported X11 display setup hook
+with the separately verified `xorg-xsetroot` package. In
+`sddm-root-color-1795632820`, the hook ran on both starts; the returning
+greeter's root was magenta at samples 013–016 and the greeter appeared
+at 017. Earlier black remained, and re-login passed. The color is a
+marker, not a proposed live setting. The hook can fill the window
+between Xorg startup and the greeter rendering, but it cannot cover
+the earlier Xorg startup gap.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash

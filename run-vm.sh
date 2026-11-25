@@ -36,6 +36,14 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     # Xorg's built-in stipple is visible before SDDM draws.
                     printf '%s\n' 'printf "%s\\n" "[X11]" "ServerArguments=-nolisten tcp -retro" >>/etc/sddm.conf.d/99-logout-vm.conf'
                 fi
+                if [[ ${SDDM_VM_ROOT_COLOR:-0} == 1 ]]; then
+                    name=xorg-xsetroot-1.1.4-1-x86_64.pkg.tar.zst
+                    (cd "$packages"; printf '%s  %s\n' 856b4ef5250a18acc616d0ba93ce85ae7020a7f99bcc9a0830fc29679e1ff1ab "$name" | sha256sum -c - >&2)
+                    printf "base64 -d >/tmp/sddm-root.pkg <<'SDDM_BINARY'\n"
+                    base64 "$packages/$name"
+                    printf '%s\n' 'SDDM_BINARY' 'bsdtar -xpf /tmp/sddm-root.pkg -C / usr/bin/xsetroot' \
+                        'printf "%s\\n" "/usr/bin/xsetroot -solid magenta && logger -t logout-vm SDDM_XSETROOT_OK" >>/usr/share/sddm/scripts/Xsetup'
+                fi
                 line='systemctl start sddm.service'
             fi
             if [[ -n ${LOGOUT_VM_STOP_FIX:-} ]]; then
