@@ -44,8 +44,11 @@ intervals. At 0.25 s sampling, the progression is:
 | 19.50 s onward | Vandal login greeter |
 
 No obvious input or “No signal” banner was visible in these samples.
-Camera exposure, dark content and signal state cannot be distinguished
-from the clip alone. The journal for this logout shows 3.25 s from Plasma
+The user identifies the dim blue interval as looking like an active
+backlight and the darker intervals as looking like the backlight went
+off. This makes a display blank worth testing, but the clip doesn't
+establish backlight state or distinguish a signal loss from a monitor's
+response to black content. The journal for this logout shows 3.25 s from Plasma
 starting its shutdown service to desktop KWin exit, another 2.45 s to
 the VT switch, and 0.88 s more to the greeter connecting. The recording
 has no precise journal clock alignment, so these events don't identify
