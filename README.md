@@ -196,6 +196,25 @@ warm controls (`*-source-control-1795618518`) also both passed, with
 greeter launch 58 ms and 42 ms after KWin stopped respectively. These
 are journal landmarks, not physical scanout measurements.
 
+### Greeter first-frame probe
+
+Set `LOGOUT_VM_GREETER_MARKER` to the login project's marker build
+directory (with `bin/`), and `LOGOUT_VM_GREETER_COLOR=0` or `1`. The
+greeter alone gets instrumented KWin; the desktop uses stock KWin.
+Both warm runs with the teardown prototype (`greeter-marker-{0,1}-1795618717`)
+passed re-login. The greeter requested VT 1 roughly 74 ms after desktop
+KWin stopped. The first successful non-test atomic ioctl followed the
+VT request by 248 ms (black background) and 234 ms (magenta).
+
+The black control sampled fully black images at indices 007–015.
+The magenta run still sampled black at 006 and 008–013; magenta
+appeared before the wallpaper at 015. So replacing the incoming KWin
+background can cover some rendered black, but it did not cover the
+earlier interval. QMP sees emulated pixels, and an ioctl return does not
+establish scanout or say anything about the physical DisplayPort link.
+The physical desktop is 3840×2160 at 100 Hz; its output advertises 60 Hz
+as preferred. The actual greeter mode and DP link state remain unknown.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash

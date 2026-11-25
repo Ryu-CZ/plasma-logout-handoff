@@ -89,7 +89,7 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 'install -m 755 /tmp/logout-vm-barrier "$p" || exit 1; '
                 'done) && printf "\\nLOGOUT_VM_BARRIER_INSTALLED\\n"')
         wait_for(b"LOGOUT_VM_BARRIER_INSTALLED", 10)
-    time.sleep(3)
+    time.sleep(5 if os.environ.get("LOGOUT_VM_GREETER_MARKER") else 3)
     execute("screendump", filename=str(results / "initial-greeter.ppm"))
     def sign_in():
         for key in ("p", "r", "o", "b", "e", "ret"):
@@ -170,6 +170,7 @@ with (connect("serial") as serial, connect("qmp") as qmp,
             'journalctl -b --no-pager -o short-monotonic '
             '_SYSTEMD_UNIT=plasmalogin.service + "UNIT=user@$g.service" '
             '+ SYSLOG_IDENTIFIER=plasmalogin-helper + SYSLOG_IDENTIFIER=logout-vm '
+            '+ SYSLOG_IDENTIFIER=kwin_wayland '
             '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service '
             '+ USER_UNIT=logout-vm-delay.service '
             '+ "_SYSTEMD_UNIT=user@$u.service" _COMM=systemd '
