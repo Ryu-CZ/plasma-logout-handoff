@@ -218,6 +218,15 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
     wait_for(b"LOGOUT_VM_BASELINE_READY", 5)
     with (results / "frames.tsv").open("w") as times, ThreadPoolExecutor(1) as worker:
         start = time.monotonic()
+        def clock_anchor():
+            # The guest uptime read is bracketed by host send/receive times.
+            lo = time.monotonic() - start
+            command('read up _ </proc/uptime; printf "\\nKMS_CLOCK_%s\\n" "$up"')
+            wait_for(rb"KMS_CLOCK_[0-9]+\.[0-9]+", 5)
+            with (results / "clock.tsv").open("a") as anchors:
+                print(lo, time.monotonic() - start, file=anchors)
+        if os.environ.get("LOGOUT_VM_KMS_STATE") == "1":
+            clock_anchor()
         command(f'[[ $(systemctl show "user@$g.service" -p ActiveState --value) == {expected} ]] && '
                 'logger -t logout-vm LOGOUT_REQUEST && '
                 'runuser -u probe -- busctl --address="unix:path=/run/user/$u/bus" '
@@ -253,6 +262,8 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             returned.result()
         except RuntimeError:
             pass  # Still collect the journal for a failed greeter return.
+        if os.environ.get("LOGOUT_VM_KMS_STATE") == "1" and not returned.exception():
+            clock_anchor()
     command('result=failed; for i in {1..40}; do '
             'n=$(loginctl show-seat seat0 -p ActiveSession --value); '
             'if [[ $n != "$s" && $(loginctl show-session "$n" -p Name --value 2>/dev/null) == probe '

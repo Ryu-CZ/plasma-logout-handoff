@@ -1,5 +1,64 @@
 # Logout handoff plan
 
+## Next decision for loki: can a real logout preserve the image?
+
+Leave the physical machine on Plasma Wayland with the stock X11 SDDM
+greeter. The passive GPU-fd and stock Wayland greeter trials did not
+remove the observed blackout. The [holder tests](HOLDER-DESIGN.md)
+showed a synthetic frame switch, not continuity through a real logout.
+
+**Decision after reviewing the VM and physical evidence:** keep the
+stock seat/authentication model as the preferred path. In synchronized
+guest run `sync-1795644064`, black samples overlapped more than one
+framebuffer on an active controller; tracing framebuffer close alone
+will not explain the entire visible gap. On physical stock X11 the
+controller detached near the VT change. The VM is therefore a test
+bed for content continuity, not a reproduction of the monitor going
+dark. Pursue a small producer-to-greeter handoff only if it can both
+present a trusted frame and preserve the output through takeover.
+If the incoming backend disables the physical output regardless,
+stop that path. Treat a system compositor as a separate architecture
+decision, not the automatic next patch.
+
+Upstream lead: [LightDM release notes](https://github.com/ubuntu/lightdm/blob/main/NEWS)
+describe a `mir-container` session running “inside a custom system
+compositor.” This is a precedent for nesting a session, not evidence
+that one compositor survived logout or kept an NVIDIA DP output lit.
+Trace its lifetime and input routing before borrowing that design.
+
+**First check a simpler handoff in the VM.** The
+[kernel DRM UAPI](https://docs.kernel.org/gpu/drm-uapi.html) says
+CLOSEFB retains the framebuffer only while a plane uses it.
+[KWin v6.8.2](https://github.com/KDE/kwin/blob/v6.8.2/src/backends/drm/drm_buffer.cpp#L41-L48)
+already tries CLOSEFB then falls back to RMFB on error. Its separate
+[GPU teardown path](https://github.com/KDE/kwin/blob/v6.8.2/src/backends/drm/drm_gpu.cpp)
+removes outputs and can commit a modeset disabling unused resources.
+During a real Wayland-to-Wayland logout, trace the **displayed** FB ID,
+CLOSEFB result, first plane/CRTC detach or disable, caller and VT.
+Compare these with the incoming greeter's first commit. Don't patch
+framebuffer cleanup unless that trace implicates it; a preserved FB
+cannot keep a disabled output lit. VM attribution is not NVIDIA proof.
+
+1. **Map ownership before coding.** Draw the proposed sequence from
+   logout request to first greeter frame. At each step name the active
+   logind session, DRM owner, input recipient, and process that survives.
+   Identify the SDDM/KWin change required. Stop if it needs competing
+   DRM owners, bypasses normal seat activation, or lets a departing
+   desktop receive greeter input.
+2. **Test one real handoff in a disposable VM.** Use a trusted static
+   image, not a desktop screenshot. Confirm its presentation before
+   desktop teardown. Record the old authenticated session ending, the
+   display owner surviving, and the new greeter presenting. Compare
+   timestamped output captures with stock; a greeter connection or Qt
+   frame swap alone is not a pass.
+3. **Try to break it.** Stall the greeter before its first frame.
+   Require bounded recovery to a usable stock login screen. Verify
+   immediate re-login and lock/unlock. Record failures as well as passes.
+4. **Decide whether to proceed.** If any gate fails, document the
+   blocker and leave loki unchanged. Only after the VM passes, propose
+   a separately approved, reversible physical comparison: a VM cannot
+   establish that the NVIDIA/DisplayPort monitor stays lit.
+
 ## Supported paths
 
 - CachyOS: Plasma Wayland → Plasma Login Manager (Wayland greeter).

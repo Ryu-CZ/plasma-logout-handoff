@@ -154,6 +154,16 @@ without observed controller disable. The host and guest clocks were
 not synchronized: no single FB ID, commit or process can be assigned
 to a black screenshot from these data. QEMU cannot measure DP signal.
 
+Synchronized repeat `sync-1795644064`: serial round trips bracketed
+guest uptime 19.74 s at host-relative 0.000–0.002 s and 26.77 s at
+7.031–7.033 s (uptime resolution 10 ms, guest not suspended).
+Frames 010–013 were entirely black inside the sampled FB 42 interval;
+frames 016–017 were also black after the transition to FB 43. Frame
+014 straddles the change to FB 47 and cannot be assigned uniquely.
+Greeter Connect was at guest 20.327 s; frame 018 was nonblack.
+Re-login passed. These are time correlations with sampled state, not
+proof of framebuffer authorship, exact scanout, or physical link state.
+
 ## Physical stock Wayland diagnostic
 
 On Nov 25, logind recorded Wayland SDDM greeter sessions and the
