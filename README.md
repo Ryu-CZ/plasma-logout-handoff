@@ -437,8 +437,15 @@ re-login or lock/unlock test. The draw log confirms the hook succeeded,
 not that the wallpaper was visible on the monitor. The user was unsure
 whether it appeared before the controls. Automatic rollback restored
 Xsetup byte-for-byte and removed the temporary helper; 144 Hz remained
-selected. A stock-versus-hook recording is needed to compare the
-visible frames.
+selected. A stock-versus-hook comparison is still needed.
+
+A later phone clip from `loki` (`video_2026-11-25_20-26-33.mp4`)
+shows a visibly black sample before the Breath greeter and black
+samples again after sign-in, before the desktop returns (reviewed at
+one frame per second). The clip does not establish exact durations,
+signal loss versus rendered black, or whether Xsetup was stock or
+hook-enabled. It shows a successful sign-in, not immediate re-login
+or a lock/unlock regression check.
 
 For local timing (no sudo, if the current user can read the system journal):
 
