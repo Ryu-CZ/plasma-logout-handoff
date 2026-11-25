@@ -344,7 +344,10 @@ the unchanged greeter. The greeter's exact pixel clock was not captured,
 and there were samples with no readable mode during VT changes. SDDM
 connected 1.789 s after desktop KWin stopped, versus 1.743 s on the
 preceding 144 Hz run. Sign-in succeeded. The original 4K 144 Hz mode
-was restored and verified at 1328.8 MHz. Visual comparison pending.
+was restored and verified at 1328.8 MHz. The user saw the same uniform
+black, but reported it looked a little shorter at 60 Hz. This single
+subjective comparison suggests the refresh mismatch may contribute;
+it did not remove the blackout or shorten measured greeter startup.
 
 #### SDDM rapid re-login in the VM
 
