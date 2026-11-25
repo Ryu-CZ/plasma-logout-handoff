@@ -1,5 +1,17 @@
 # Logout handoff plan
 
+## Supported paths
+
+- CachyOS: Plasma Wayland → Plasma Login Manager (Wayland greeter).
+- Manjaro: Plasma Wayland → SDDM (X11 greeter, as configured on the
+  reference PC). Test the same backend first; a Wayland SDDM greeter
+  would be a separate comparison, not a substitute for the baseline.
+
+Share the VM driver and timing conventions, not assumptions about
+the cause. Measure each manager's own teardown, greeter startup, and
+first output before choosing changes. The CachyOS GPU-generator
+workaround and the PLM-specific greeter patch do not apply to SDDM.
+
 **Reliability first.** A working greeter is not a passing logout test.
 The desktop must also start on immediate re-login, with a usable shell
 and unchanged lock behavior. The physical warm-start experiment exposed
@@ -20,7 +32,11 @@ proposing installation.
    session and a new shell, and capture conflicting systemd jobs. If the
    stock guest passes, use a guest-only delayed stop on a session unit
    to test the timing hypothesis. Keep the natural and injected results
-   separate. Check both the desktop target and greeter target.
+   separate. Check both the desktop target and greeter target. For
+   SDDM, exercise a real password login, logout, and immediate sign-in
+   on the X11 greeter, first stock and then with the same injected
+   desktop stop. Require a new active SDDM Wayland session and shell;
+   don't assume a desktop ordering fix is needed until tested.
 2. **Fix ordering at the source, if reproducible.** Identify which job
    and which caller own each start/stop transaction. Prefer waiting for
    the actual previous session stop to finish over sleeps, retries that

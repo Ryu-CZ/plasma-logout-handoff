@@ -11,6 +11,7 @@ import time
 
 work, results = map(Path, sys.argv[1:])
 mode = os.environ["LOGOUT_VM_MODE"]
+manager = "sddm" if mode == "sddm" else "plasmalogin"
 
 
 def connect(name):
@@ -101,11 +102,11 @@ with (connect("serial") as serial, connect("qmp") as qmp,
 
     sign_in()
 
-    command('g=$(id -u plasmalogin); u=$(id -u probe); '
+    command(f'dm={manager}; g=$(id -u "$dm"); u=$(id -u probe); '
             'for i in {1..120}; do '
             's=$(loginctl show-user probe -p Display --value); '
             'if [[ $(loginctl show-session "$s" -p Type --value 2>/dev/null) == wayland '
-            '&& $(loginctl show-session "$s" -p Service --value 2>/dev/null) == plasmalogin ]] '
+            '&& $(loginctl show-session "$s" -p Service --value 2>/dev/null) == "$dm" ]] '
             '&& pgrep -u "$u" -x plasmashell >/dev/null '
             '&& [[ $(systemctl show "user@$g.service" -p ActiveState --value) == inactive ]]; '
             'then echo LOGOUT_VM_DESKTOP_READY; break; fi; sleep .25; done')
@@ -127,7 +128,7 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     execute("screendump", filename=str(results / "desktop.ppm"))
 
     # Wait for a new greeter connection, not a fixed delay after sampling.
-    command('before=$(journalctl -b -u plasmalogin.service --no-pager -o cat '
+    command('before=$(journalctl -b -u "$dm.service" --no-pager -o cat '
             '| grep -Fc "Message received from greeter: Connect"); '
             '[[ $before -ge 1 ]] && echo LOGOUT_VM_BASELINE_READY')
     wait_for(b"LOGOUT_VM_BASELINE_READY", 5)
@@ -138,7 +139,7 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 'runuser -u probe -- busctl --address="unix:path=/run/user/$u/bus" '
                 'call org.kde.Shutdown /Shutdown org.kde.Shutdown logout '
                 '&& for i in {1..280}; do '
-                'count=$(journalctl -b -u plasmalogin.service --no-pager -o cat '
+                'count=$(journalctl -b -u "$dm.service" --no-pager -o cat '
                 '| grep -Fc "Message received from greeter: Connect"); '
                 'if [[ $count -gt $before ]]; '
                 'then printf "\\nLOGOUT_VM_GREETER_RETURNED\\n"; break; fi; sleep .05; done')
@@ -166,12 +167,12 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     command('result=failed; for i in {1..40}; do '
             'n=$(loginctl show-seat seat0 -p ActiveSession --value); '
             'if [[ $n != "$s" && $(loginctl show-session "$n" -p Name --value 2>/dev/null) == probe '
-            '&& $(loginctl show-session "$n" -p Service --value 2>/dev/null) == plasmalogin ]] '
+            '&& $(loginctl show-session "$n" -p Service --value 2>/dev/null) == "$dm" ]] '
             '&& pgrep -u "$u" -x plasmashell >/dev/null; '
             'then result=passed; break; fi; sleep .25; done; '
             'echo "LOGOUT_VM_RELOGIN=$result"; '
             'journalctl -b --no-pager -o short-monotonic '
-            '_SYSTEMD_UNIT=plasmalogin.service + "UNIT=user@$g.service" '
+            '"_SYSTEMD_UNIT=$dm.service" + "UNIT=user@$g.service" '
             '+ SYSLOG_IDENTIFIER=plasmalogin-helper + SYSLOG_IDENTIFIER=logout-vm '
             '+ SYSLOG_IDENTIFIER=kwin_wayland '
             '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service '

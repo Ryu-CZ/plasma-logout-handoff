@@ -2,22 +2,44 @@
 set -euo pipefail
 here=$(cd -- "$(dirname -- "$0")" && pwd)
 login=$here/../plasma-login-handoff
-base=${1:?Usage: bash run-vm.sh BASE_CACHE NEW_RESULTS_DIR cold|warm}
+base=${1:?Usage: bash run-vm.sh BASE_CACHE NEW_RESULTS_DIR cold|warm|sddm}
 results=$(realpath -m "${2:?Provide a new results directory}")
 export LOGOUT_VM_MODE=${3:?Specify cold or warm}
-[[ $LOGOUT_VM_MODE == cold || $LOGOUT_VM_MODE == warm ]]
+[[ $LOGOUT_VM_MODE =~ ^(cold|warm|sddm)$ ]]
+if [[ $LOGOUT_VM_MODE == sddm ]]; then
+    packages=$(realpath "${SDDM_VM_PACKAGES:?Directory containing the verified SDDM packages}")
+    (cd "$packages"; sha256sum -c "$here/sddm-packages.sha256")
+fi
 # Reuse the login harness's boot, package verification and guest setup,
 # swapping only its QMP/serial driver. Don't change either checkout.
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
 mkdir "$tmp/vm"
 ln -s "$login/vm/run.sh" "$tmp/vm/"
-if [[ -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_COMBINED:-} ]]; then
+if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_COMBINED:-} ]]; then
     # Insert guest-only configuration just before PLM starts.
     while IFS= read -r line; do
         if [[ $line == 'systemctl start plasmalogin.service' ]]; then
+            if [[ $LOGOUT_VM_MODE == sddm ]]; then
+                while read -r _ name; do
+                    printf "base64 -d >/tmp/sddm-vm.pkg <<'SDDM_BINARY'\n"
+                    base64 "$packages/$name"
+                    printf 'SDDM_BINARY\nbsdtar -xpf /tmp/sddm-vm.pkg -C / --exclude .PKGINFO --exclude .BUILDINFO --exclude .MTREE --exclude .INSTALL\n'
+                done <"$here/sddm-packages.sha256"
+                printf '%s\n' 'rm /tmp/sddm-vm.pkg' 'systemd-sysusers sddm.conf' 'systemd-tmpfiles --create sddm.conf' \
+                    'mkdir -p /etc/sddm.conf.d' \
+                    'printf "%s\\n" "[General]" "DisplayServer=x11" "[Theme]" "Current=" "[Users]" "RememberLastUser=true" >/etc/sddm.conf.d/99-logout-vm.conf' \
+                    'install -d -o sddm -g sddm /var/lib/sddm' \
+                    'printf "%s\\n" "[Last]" "Session=plasma.desktop" "User=probe" >/var/lib/sddm/state.conf' \
+                    'chown sddm:sddm /var/lib/sddm/state.conf' 'systemctl daemon-reload'
+                line='systemctl start sddm.service'
+            fi
             if [[ -n ${LOGOUT_VM_STOP_FIX:-} ]]; then
-                for name in startplasma-wayland startplasma-login-wayland; do
+                starters=(startplasma-wayland)
+                if [[ $LOGOUT_VM_MODE != sddm ]]; then
+                    starters+=(startplasma-login-wayland)
+                fi
+                for name in "${starters[@]}"; do
                     printf "base64 -d >/tmp/logout-vm-starter <<'LOGOUT_VM_BINARY'\n"
                     base64 "$LOGOUT_VM_STOP_FIX/$name"
                     printf 'LOGOUT_VM_BINARY\ninstall -m 755 /tmp/logout-vm-starter /usr/bin/%s\n' "$name"

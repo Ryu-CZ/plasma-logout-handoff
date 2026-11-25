@@ -324,6 +324,29 @@ The CachyOS generator was absent. Different GPU wiring, login manager,
 and greeter backend make this a comparison, not a controlled A/B.
 No changes were applied on Manjaro.
 
+#### SDDM rapid re-login in the VM
+
+Run `SDDM_VM_PACKAGES=DIR bash run-vm.sh BASE NEW_RESULTS sddm`.
+The networkless snapshot uses the same signed SDDM and Xorg package
+versions as the Manjaro reference machine (see `sddm-packages.sha256`),
+with the existing CachyOS/Arch Plasma 6.8.3 base and SDDM's built-in
+theme. It matches the X11 greeter → Wayland session path, not the full
+Manjaro installation or physical GPU. Only the VM receives packages.
+
+- Stock (`sddm-baseline-1795632543`): rapid re-login passed. Xorg
+  started 58 ms after KWin stopped; greeter connected 337 ms after stop.
+- Stock + six-second desktop stop (`sddm-delay-1795632579`): the
+  password was accepted, but Plasma's start collided with the queued
+  workspace stop. SDDM brought the greeter back without its own
+  transaction error.
+- Same delayed stop + desktop teardown patch only
+  (`sddm-delay-fixed-1795632626`): rapid re-login passed. The greeter
+  connected 6.23 s after KWin stopped; the wait resolved the race but
+  did not shorten the outage. SDDM was unmodified.
+
+This establishes a shared Plasma desktop ordering issue under slow
+teardown. The PLM greeter-specific patch is not needed on this SDDM path.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
