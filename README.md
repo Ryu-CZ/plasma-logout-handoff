@@ -58,13 +58,9 @@ the cause of either individual dark interval. The video is not committed.
 
 1. Compare saved greeter output settings and, if needed, actual display
    mode across a logout. Don't sync or change settings before comparing.
-2. Reproduce the return in a disposable VM and compare cold versus
-   already-running greeter user-manager startup. If the result warrants a
-   physical test, temporarily pre-start just the greeter's user manager,
-   not a greeter session or compositor. Don't change seat ownership or
-   enable persistent lingering for a timing experiment.
-3. Check whether the shortened startup removes either dark interval.
-   A shorter startup does not establish glitch-free scanout.
+2. Investigate the rapid re-login failure below in a disposable VM before
+   considering another physical experiment. Do not repeat the pre-start
+   on the host or enable lingering as a workaround.
 
 ## Reproduce in the disposable VM
 
@@ -105,6 +101,27 @@ journal milestones, but **both runs still sampled 13 fully black images
 out of 175**. These are sampled pixels, not counts of physical frames,
 and the experiment does not reproduce the PC's DP flicker. This is a
 candidate for a shorter physical return, not a fix for all black frames.
+
+### Physical warm test: failed re-login
+
+On the physical one-off warm test, desktop KWin exited at monotonic
+7455.137 s, and the greeter session started at 7455.197 s (60 ms later,
+versus about 2.51 s on the filmed cold run). This verifies a shorter
+startup interval, not a visual improvement. The user could not sign back
+in and had to reboot.
+
+The journal shows authentication succeeded. The desktop user manager
+then rejected the new `plasma-workspace-wayland.target` start because
+`graphical-session.target` still had a stop job queued. The greeter's
+subsequent restart was also rejected because its KWin still had a stop
+job queued. These are startup/shutdown races, not an authentication
+failure. This test does not establish whether prewarming was necessary
+to trigger the race. The VM experiment above ended after the greeter
+returned and did not test rapid re-login.
+
+After reboot, normal sign-in succeeded, the greeter user manager was
+inactive in the desktop session, and the existing patched desktop KWin
+was still selected. No persistent configuration or lingering was added.
 
 For local timing (no sudo, if the current user can read the system journal):
 
