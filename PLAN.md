@@ -17,6 +17,12 @@ bed for content continuity, not a reproduction of the monitor going
 dark. A one-shot guest fbdev preload (`preload-1795644288`) appeared in two
 screenshots but went black again before the greeter. Do not pursue
 preloading the console or repeatedly repainting a VT as the solution.
+The incoming Wayland KWin background A/B likewise left a black
+interval before the marker appeared. Retire greeter-only paint as a
+full fix. Before another implementation, map how a trusted frame
+could survive the console interval and the first real greeter frame
+without changing seat or input ownership. If no credible path exists,
+keep stock rather than refine the marker tests.
 Pursue a small producer-to-greeter handoff only if it can both
 present a trusted frame and preserve the output through takeover.
 If the incoming backend disables the physical output regardless,

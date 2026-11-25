@@ -176,6 +176,26 @@ submitted a commit. This favors testing a trusted image across both
 the console fallback and first compositor frames rather than just
 preserving the outgoing KWin framebuffer. No physical attribution.
 
+### Incoming compositor background A/B
+
+Both runs used the same KWin marker build via
+`SDDM_VM_WAYLAND=1 LOGOUT_VM_KMS_STATE=1 LOGOUT_VM_GREETER_MARKER=<build>`;
+only `LOGOUT_VM_GREETER_COLOR` changed. Real logout and immediate
+re-login passed in both runs.
+
+| Guest run | Near-black before first nonblack capture | Following captures |
+| --- | --- | --- |
+| `sddm-early-0.f9yDCE/run` (black) | 006–018, starts 0.244–0.727 s | Greeter from 019 |
+| `sddm-early-1.47enSy/run` (magenta) | 007–017, starts 0.284–0.685 s | Magenta 018–021, greeter from 022 |
+
+In the magenta run the controller remained active in sampled states.
+It showed the fbcon framebuffer earlier, and the first magenta
+capture coincided with the switch back to a KWin-allocated FB,
+within the clock bracket and polling uncertainty. Changing the
+incoming compositor background can color its early frames but does
+not bridge the preceding console interval. Single runs are not
+evidence of a speedup; there was no physical DP measurement.
+
 ## Physical stock Wayland diagnostic
 
 On Nov 25, logind recorded Wayland SDDM greeter sessions and the

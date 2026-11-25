@@ -85,7 +85,20 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     'printf "%s\\n" "[Service]" "ExecStart=" "ExecStart=$d/bin/kwin_wayland_wrapper --xwayland" "Environment=PATH=$d/bin:/usr/bin LD_LIBRARY_PATH=$d/lib KWIN_LOGIN_VM_WALLPAPER=$image KWIN_EXPERIMENTAL_MANAGED_LOCK_WALLPAPER=1 KSCREENLOCKER_EXPERIMENTAL_WALLPAPER_UNDERLAY=1" >/etc/systemd/user/plasma-kwin_wayland.service.d/90-logout-vm-combined.conf' \
                     'printf "%s\\n" "[Service]" "ExecStart=" "ExecStart=$d/bin/plasmashell --no-respawn" "Environment=LD_LIBRARY_PATH=$d/lib XDG_DATA_DIRS=$d/share:/usr/share PLASMA_EXPERIMENTAL_MANAGED_LOCK_WALLPAPER=1" >/etc/systemd/user/plasma-plasmashell.service.d/90-logout-vm-combined.conf'
             fi
-            if [[ -n ${LOGOUT_VM_GREETER_MARKER:-} ]]; then
+            if [[ -n ${LOGOUT_VM_GREETER_MARKER:-} && $LOGOUT_VM_MODE == sddm ]]; then
+                [[ ${SDDM_VM_WAYLAND:-0} == 1 && ${SDDM_VM_GREETER_FAIL:-0} != 1 ]] || {
+                    echo 'The SDDM compositor marker requires a working Wayland greeter.' >&2
+                    exit 1
+                }
+                printf '%s\n' \
+                    "LOGOUT_GREETER_COLOR=${LOGOUT_VM_GREETER_COLOR:-0}" \
+                    'install -d -m755 /opt/logout-vm-kwin' \
+                    'install -m755 /opt/probe/kwin/{kwin_wayland,libkwin.so.6} /opt/logout-vm-kwin/' \
+                    'rm -f /home/probe/.config/systemd/user/plasma-kwin_wayland.service.d/marker.conf' \
+                    'printf "%s\n" "#!/bin/sh" "export LD_LIBRARY_PATH=/opt/logout-vm-kwin KWIN_LOGIN_VM_MARKER=$LOGOUT_GREETER_COLOR QT_FORCE_STDERR_LOGGING=1" "exec /opt/logout-vm-kwin/kwin_wayland --no-lockscreen --no-global-shortcuts --no-kactivities --locale1" >/opt/logout-vm-kwin/greeter' \
+                    'chmod 755 /opt/logout-vm-kwin/greeter' \
+                    'printf "%s\n" "[Wayland]" "CompositorCommand=/opt/logout-vm-kwin/greeter" >/etc/sddm.conf.d/zzz-logout-vm-marker.conf'
+            elif [[ -n ${LOGOUT_VM_GREETER_MARKER:-} ]]; then
                 printf '%s\n' \
                     "LOGOUT_GREETER_COLOR=${LOGOUT_VM_GREETER_COLOR:-0}" \
                     'install -d -m755 /opt/logout-vm-kwin /etc/systemd/user/plasma-login-kwin_wayland.service.d' \
