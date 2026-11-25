@@ -257,6 +257,29 @@ to the visible flicker, but one comparison cannot establish whether the
 DP link retrained or whether the remaining black was rendered content.
 For now, keep 100 Hz; holding 60 Hz was diagnostic, not a proposed fix.
 
+### Cold user-manager delay: CachyOS NVIDIA generator
+
+The journal places about 2.35 s between the greeter manager's PAM
+session opening and systemd queuing the default target. The target
+then completes in about 12 ms. The same early gap occurred starting
+the desktop user manager after boot, so it is not greeter rendering.
+
+`bash probe-generator.sh` compares the installed
+`20-nvidia-rtd3-workaround` generator with a read-only sysfs lookup.
+The installed generator comes from [chwd PR #149](https://github.com/CachyOS/chwd/pull/149)
+and runs `lspci -d '10de:*:0302'` to select Mesa EGL on hybrid systems.
+Three cold standalone runs took 2.28–2.32 s and changed NVIDIA runtime
+status from suspended to active where checked. Warm runs took 8 ms.
+The sysfs vendor/class check emitted the identical EGL setting in
+under 1 ms. This matches the missing time closely, but a controlled
+manager-start A/B is needed before assigning the entire delay to it.
+
+An administrator override of the same basename can preserve the EGL
+workaround rather than disabling it. Systemd runs these generators for
+all user managers, so even a temporary override has that scope unless
+it checks the UID. No override, runtime-PM setting change, or
+prestarted manager was applied during this probe.
+
 ### Combined login and lock regression
 
 `warm-combined-1795618921` ran the patched starters with the existing
