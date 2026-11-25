@@ -11,11 +11,13 @@ behavior from VM screenshots or equate greeter connection with presentation.
    capture](README.md#stock-x11-logout-with-a-filmed-uptime-cue-2331),
    apparent black started roughly a second before the sampled detach,
    near a 144 → 60 Hz transition and desktop teardown. Inspect the
-   pre-VT refresh transition in the existing logs before proposing a
-   patch. The later detach remains a separate barrier to continuity.
-   If the logs cannot identify why the earlier interval is dark,
-   monitor-side signal status is the missing observation; another
-   identical clip would not settle it.
+   pre-VT refresh transition is reproducible in the two sampled runs,
+   but the logs do not name its caller. The later detach remains a
+   separate barrier to continuity. If a further diagnostic is worth
+   doing, add primary-plane FB/allocator and full timing to the
+   sampler and capture monitor-side signal status if available.
+   FB allocator identifies the buffer, not the commit caller.
+   Another identical clip would not settle the cause.
 2. **Choose the remedy by interval.** If scanout stays active while pixels
    are black, investigate a coordinated last trusted frame / first greeter
    frame handoff. If the output switches off, investigate whether the

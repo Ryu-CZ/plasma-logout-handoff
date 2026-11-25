@@ -579,6 +579,24 @@ pixels from a blanking or resynchronizing monitor, and the sampler
 does not show Xorg's eventual visible output. No measured DP
 link-training event or monitor signal status was captured.
 
+**Refresh transition follow-up.** Saved kernel and session logs
+(`refresh.log` in the artifact directory) show both 23:31 invocations
+reached active 60 Hz on tty5 before SDDM launched Xorg. The unfilmed
+invocation had two NVIDIA head-0 flip-event timeouts and a warning
+amid KWin teardown; its 60 Hz sample began at 21871.99 but only
+returned by 21878.14. The filmed invocation had no equivalent timeout
+in the handoff window. Use sample start and journal arrival as a
+bracket, not as the precise time of the mode change.
+
+The boot journal identifies fb0 as `nvidia-drmdrmfb`. The [matching
+NVIDIA release source](https://github.com/NVIDIA/open-gpu-kernel-modules/blob/620.70.06/kernel-open/nvidia-drm/nvidia-drm-drv.c)
+sets up the DRM client/fbdev path, making console restore during
+desktop teardown a candidate. The capture lacks the primary-plane FB,
+its allocator and the modeset caller. It cannot distinguish a console
+restore from another teardown operation or determine monitor signal
+state. The earlier passive-fd run tested the later detach, not this
+144 → 60 Hz transition.
+
 To repeat the stock capture, use an externally started, read-only
 monitor for the actual active VT and output timing. Align a camera time reference with
 the host journal, and capture monitor-side signal status if available.
