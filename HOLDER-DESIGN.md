@@ -83,5 +83,17 @@ screenshots passed all three synthetic scenarios:
 
 These are full-screen colors in one Qt window on a running
 compositor. The timeout marker does not restart SDDM; no desktop
-session was stopped during the probe. Actual greeter recovery and
+session was stopped during the probe. Actual holder recovery and
 seat integration remain untested.
+
+## Physical stock Wayland diagnostic
+
+On Nov 25, logind recorded Wayland SDDM greeter sessions and the
+helper started KWin; a greeter connected at 22:26:11. The user supplied
+`video_2026-11-25_22-28-48.mp4` for the trial. At 4 samples/s it shows
+roughly 1.5 s of apparent black, then a dim lit frame before Breath
+appears near 10 s. The clip clock was not aligned to the journal, so
+the precise session and display-state transitions cannot be inferred
+from it. The evidence does not support recommending stock Wayland as
+a blackout fix. The journal shows Xorg returning after the 22:26:31
+restart, and the trial drop-in was absent when checked.
