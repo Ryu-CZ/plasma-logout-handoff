@@ -6,6 +6,15 @@ and unchanged lock behavior. The physical warm-start experiment exposed
 two overlapping service transactions. Do not repeat that workaround on
 the host while those races are unexplained.
 
+**Preserve the working handoffs.** The sibling repositories
+[`plasma-lock-handoff`](../plasma-lock-handoff) and
+[`plasma-login-handoff`](../plasma-login-handoff) already provide the
+accepted physical lock/unlock and login transitions. The combined
+desktop KWin build, lock wallpaper transport, and wallpaper-only splash
+remain the baseline. Do not replace them with logout-specific builds;
+reuse their VM instrumentation and verify the combined behavior before
+proposing installation.
+
 1. **Capture the lifecycle in the VM.** Exercise cold and warm greeter
    starts, then re-authenticate immediately. Check a new active PLM
    session and a new shell, and capture conflicting systemd jobs. If the
