@@ -213,7 +213,37 @@ background can cover some rendered black, but it did not cover the
 earlier interval. QMP sees emulated pixels, and an ioctl return does not
 establish scanout or say anything about the physical DisplayPort link.
 The physical desktop is 3840×2160 at 100 Hz; its output advertises 60 Hz
-as preferred. The actual greeter mode and DP link state remain unknown.
+as preferred. A subsequent read-only physical capture measured the actual modes below.
+
+### Physical display mode during normal logout
+
+The sampler (`sample-dp.sh`) recorded changes in Intel DRM atomic
+state and the active VT, roughly every 50 ms. Nothing was installed or
+changed, and no screen contents were captured. In boot-relative time:
+
+| Time (s) | Observed state |
+| --- | --- |
+| 173.544 | Desktop KWin service began stopping |
+| 173.570 | DP-1 switched from 3840×2160 at 100 Hz (1188 MHz pixel clock) to 60 Hz (533.25 MHz), still on the desktop VT |
+| 173.895 | Desktop KWin service finished stopping |
+| 176.370 | Greeter VT became active; DP-1 still at 60 Hz |
+| 176.890 | Greeter switched DP-1 back to 100 Hz, same pixel clock as desktop |
+| 177.268 | Greeter UI connected |
+| 183.850 | New desktop VT active, still at 100 Hz |
+
+The user saw pitch black → dark gray (backlight visibly on) → pitch
+black. The two mode changes are consistent with the two dark intervals
+around a roughly 3.3 s stretch at 60 Hz. The observation has no
+frame-level timestamps. Sampled connector/CRTC state stayed enabled
+and active; that does **not** prove the link stayed trained through
+each mode change, and no link-loss event was confirmed.
+
+The greeter and desktop already agree at 100 Hz, so syncing their
+output settings would not address the intermediate 60 Hz mode. The
+next useful A/B is to align both endpoints temporarily with the
+intermediate timing (match the pixel clock, not just the refresh
+label), then restore 100 Hz. That would test how much flicker the mode
+changes explain; it would not change the cold greeter startup delay.
 
 ### Combined login and lock regression
 
