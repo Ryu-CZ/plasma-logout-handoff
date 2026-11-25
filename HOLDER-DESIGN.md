@@ -97,6 +97,20 @@ compositor. The timeout marker does not restart SDDM; no desktop
 session was stopped during the probe. Actual holder recovery and
 seat integration remain untested.
 
+## Guest trace: who clears the controller mode?
+
+Run `kms-1795643272` (`SDDM_VM_WAYLAND=1 LOGOUT_VM_KMS_TRACE=1`):
+before logout KWin PID 547 had a desktop on active CRTC 38 with FB 43.
+The logout request at guest monotonic 19.651031 preceded a greeter
+connection at 20.192441; re-login passed. A kprobe on
+`drm_atomic_set_mode_for_crtc` saw only non-null mode arguments,
+first from (sd-close) at 19.853173 and then systemd-logind. These
+are helper calls, not proof of committed changes. No first disable
+can be attributed from this trace. Next, instrument the **committed**
+old/new CRTC active and primary-plane FB state (including atomic
+property-blob paths), and distinguish test-only from real commits.
+Do not infer NVIDIA behavior or visual black from this guest trace.
+
 ## Physical stock Wayland diagnostic
 
 On Nov 25, logind recorded Wayland SDDM greeter sessions and the

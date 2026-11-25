@@ -185,6 +185,16 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 'snap before; chvt 9 && sleep 1 && snap away; '
                 'chvt "$v" && sleep 1 && snap back && printf "\\nVT_PROBE_DONE\\n"')
         wait_for(b"VT_PROBE_DONE", 15)
+    if os.environ.get("LOGOUT_VM_KMS_TRACE") == "1":
+        command('k=$(pgrep -u "$u" -x kwin_wayland | head -1); '
+                'echo "KMS_DESKTOP_PID=$k"; '
+                'grep -E "^(plane|crtc)|^[[:space:]]+(crtc|fb|enable|active)=" '
+                '/sys/kernel/debug/dri/0/state; '
+                't=/sys/kernel/tracing; echo mono > "$t/trace_clock"; '
+                """echo 'p:kms_set_mode drm_atomic_set_mode_for_crtc mode=$arg2' """
+                '>> "$t/kprobe_events" && echo 1 > "$t/events/kprobes/kms_set_mode/enable" '
+                '&& printf "\\nKMS_TRACE_READY\\n"')
+        wait_for(b"KMS_TRACE_READY", 5)
     # Wait for a new greeter connection, not a fixed delay after sampling.
     command('before=$(journalctl -b -u "$dm.service" --no-pager -o cat '
             '| grep -Fc "Message received from greeter: Connect"); '
@@ -244,6 +254,10 @@ with (connect("serial") as serial, connect("qmp") as qmp,
             '+ "_SYSTEMD_UNIT=user@$g.service" _COMM=systemd; '
             'echo LOGOUT_VM_DONE')
     wait_for(b"LOGOUT_VM_DONE", 20)
+    if os.environ.get("LOGOUT_VM_KMS_TRACE") == "1":
+        command('echo 0 > "$t/events/kprobes/kms_set_mode/enable"; '
+                'grep kms_set_mode "$t/trace" | tail -100; printf "\\nKMS_TRACE_END\\n"')
+        wait_for(b"KMS_TRACE_END", 10)
     report = (results / "serial.log").read_bytes()
     if not attempted or b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
         raise RuntimeError("Did not reach a new desktop after logout; see serial.log")
