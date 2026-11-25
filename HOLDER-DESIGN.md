@@ -28,6 +28,13 @@ path. A visible blink on fallback is preferable to an unusable seat.
 ## Backend comparison is not a holder trial
 
 A stock Wayland greeter is a separate diagnostic. SDDM 0.21.0
+[`HelperStartWayland.cpp`](https://github.com/sddm/sddm/blob/v0.21.0/src/helper/HelperStartWayland.cpp)
+starts the configured compositor before the greeter and stops it when
+the helper exits. Stock configuration does not attach the greeter to
+an independent resident compositor. The single-owner design would
+need an integration change, not just a backend switch.
+
+SDDM 0.21.0
 `Seat::displayStopped()` evaluates `defaultDisplayServerType()` before
 `createDisplay()` reloads the config. Do not assume a staged drop-in
 will take effect on the very next logout. Also, deleting a drop-in
