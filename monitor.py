@@ -134,17 +134,18 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 'logger -t logout-vm LOGOUT_REQUEST && '
                 'runuser -u probe -- busctl --address="unix:path=/run/user/$u/bus" '
                 'call org.kde.Shutdown /Shutdown org.kde.Shutdown logout '
-                '&& for i in {1..120}; do '
+                '&& for i in {1..280}; do '
                 'count=$(journalctl -b -u plasmalogin.service --no-pager -o cat '
                 '| grep -Fc "Message received from greeter: Connect"); '
                 'if [[ $count -gt $before ]]; '
                 'then printf "\\nLOGOUT_VM_GREETER_RETURNED\\n"; break; fi; sleep .05; done')
         # Drain serial concurrently so guest TTY output cannot stall logout.
-        returned = worker.submit(wait_for, b"LOGOUT_VM_GREETER_RETURNED", 10)
+        returned = worker.submit(wait_for, b"LOGOUT_VM_GREETER_RETURNED", 22)
         attempted = False
-        for index in range(175):
+        for index in range(450 if os.environ.get("LOGOUT_VM_STOP_FIX") else 175):
             if returned.done() and not attempted:
-                returned.result()
+                if returned.exception():
+                    break
                 # The greeter connection precedes its input field becoming ready.
                 time.sleep(.8)
                 sign_in()
@@ -155,9 +156,10 @@ with (connect("serial") as serial, connect("qmp") as qmp,
             after = time.monotonic()
             print(f"{name}\t{before-start:.6f}\t{after-start:.6f}", file=times)
             time.sleep(max(0, .04 - (after - before)))
-        returned.result()
-        if not attempted:
-            raise RuntimeError("Greeter returned outside the sampling window")
+        try:
+            returned.result()
+        except RuntimeError:
+            pass  # Still collect the journal for a failed greeter return.
     command('result=failed; for i in {1..40}; do '
             'n=$(loginctl show-seat seat0 -p ActiveSession --value); '
             'if [[ $n != "$s" && $(loginctl show-session "$n" -p Name --value 2>/dev/null) == probe '
@@ -175,5 +177,5 @@ with (connect("serial") as serial, connect("qmp") as qmp,
             'echo LOGOUT_VM_DONE')
     wait_for(b"LOGOUT_VM_DONE", 20)
     report = (results / "serial.log").read_bytes()
-    if b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
+    if not attempted or b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
         raise RuntimeError("Did not reach a new desktop after logout; see serial.log")

@@ -1,0 +1,29 @@
+--- a/startkde/startplasma.cpp
++++ b/startkde/startplasma.cpp
+@@ -761,17 +761,15 @@
+ 
+ void stopSystemdSession()
+ {
+-    // Generally plasma-workspace.target will have already marked itself as stopped
+-    // when the session ends gracefully.
+-
+-    // However, we also need to handle the reverse case where the login manager restarts and
+-    // startplasma is terminated first. This should trigger a cleanup of the systemd services we started.
+-    auto msg = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.systemd1"),
+-                                              QStringLiteral("/org/freedesktop/systemd1"),
+-                                              QStringLiteral("org.freedesktop.systemd1.Manager"),
+-                                              QStringLiteral("StopUnit"));
+-    msg << QStringLiteral("plasma-workspace.target") << QStringLiteral("fail");
+-    QDBusConnection::sessionBus().call(msg);
++    // KWin's bus name can disappear before the shutdown transaction finishes.
++    // Join the outstanding stop rather than ending the login session early.
++    QProcess stop;
++    stop.start(QStringLiteral("/usr/bin/systemctl"),
++               {QStringLiteral("--user"), QStringLiteral("--job-mode=fail"),
++                QStringLiteral("stop"), QStringLiteral("graphical-session.target")});
++    if (!stop.waitForFinished(15000) || stop.exitStatus() != QProcess::NormalExit || stop.exitCode() != 0) {
++        qCWarning(PLASMA_STARTUP) << "Could not finish stopping Plasma:" << stop.errorString() << stop.readAllStandardError();
++    }
+ }
+ 
+ void waitForKonqi()

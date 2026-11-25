@@ -1,0 +1,47 @@
+--- a/src/frontend/startkde/startplasma.cpp
++++ b/src/frontend/startkde/startplasma.cpp
+@@ -497,34 +497,16 @@
+     // stopped by the sigterm handler
+     app.exec();
+ 
+-    qDebug() << "stopping";
+-
+-    {
+-        auto msg = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.systemd1"),
+-                                                  QStringLiteral("/org/freedesktop/systemd1"),
+-                                                  QStringLiteral("org.freedesktop.systemd1.Manager"),
+-                                                  QStringLiteral("StopUnit"));
+-        msg << QStringLiteral("plasma-login-wayland.target") << QStringLiteral("fail");
+-        QDBusReply<QDBusObjectPath> reply = QDBusConnection::sessionBus().call(msg);
+-        if (!reply.isValid()) {
+-            qWarning() << "Could not stop systemd managed Plasma session:" << reply.error().name() << reply.error().message();
+-        }
+-    }
+-
+-    qDebug() << "final cleanup";
+-
+-    // systemd returns when the call is made, but not all jobs are torn down
+-    // this waits until kwin is definitely gone too, which helps logind
+-    {
+-        auto msg = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.systemd1"),
+-                                                  QStringLiteral("/org/freedesktop/systemd1"),
+-                                                  QStringLiteral("org.freedesktop.systemd1.Manager"),
+-                                                  QStringLiteral("StopUnit"));
+-        msg << QStringLiteral("plasma-login-kwin_wayland.service") << QStringLiteral("fail");
+-        QDBusReply<QDBusObjectPath> reply = QDBusConnection::sessionBus().call(msg);
+-        if (!reply.isValid()) {
+-            qWarning() << "Could not close up systemd managed Plasma session:" << reply.error().name() << reply.error().message();
+-        }
++    // StopUnit by itself only queues the stop. Wait for both the target and
++    // its compositor before letting the helper report greeter teardown.
++    QProcess stop;
++    stop.start(QStringLiteral("/usr/bin/systemctl"),
++               {QStringLiteral("--user"), QStringLiteral("--job-mode=fail"),
++                QStringLiteral("stop"), QStringLiteral("plasma-login-wayland.target"),
++                QStringLiteral("plasma-login-kwin_wayland.service")});
++    // The greeter helper gives the starter five seconds to terminate.
++    if (!stop.waitForFinished(4000) || stop.exitStatus() != QProcess::NormalExit || stop.exitCode() != 0) {
++        qWarning() << "Could not finish stopping greeter:" << stop.errorString() << stop.readAllStandardError();
+     }
+ 
+     return 0;

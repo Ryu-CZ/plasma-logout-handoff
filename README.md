@@ -171,6 +171,31 @@ and start are separate operations, and the test timeout does not define
 production recovery. A source fix should bind a wait to the original
 stop transaction and preserve normal failure handling.
 
+### Source-level teardown prototype
+
+The two 6.8.3 patches under `patches/` wait for blocking
+`systemctl --user --job-mode=fail stop` calls in the outgoing starters.
+This joins a pending stop rather than replacing it. Desktop teardown
+waits for `graphical-session.target`; greeter teardown waits for both
+its target and KWin, within the helper's existing five-second timeout.
+A timeout is logged; the prototype does not guarantee recovery if a
+stop hangs. No live binaries were replaced.
+
+Build with `bash build-stop-fix.sh DESKTOP_BUILD GREETER_BUILD NEW_OUTPUT_DIR`
+against current, configured 6.8.3 build trees. Pass the output directory
+as `LOGOUT_VM_STOP_FIX` to the VM runner. Use `LOGOUT_VM_DELAY_STOP=1`
+for the injected six-second stop; leave it unset for controls.
+
+The patched warm run with the delay (`warm-source-1795618465`) returned
+to the greeter and signed back into a fresh desktop. It queued no
+conflicting starts; greeter launch occurred 5.895 s after desktop KWin
+stopped, rather than racing the old session. This fixes the observed
+failure in this test but exposes the tradeoff: waiting after KWin exits
+can extend the period with no desktop compositor. The patched cold and
+warm controls (`*-source-control-1795618518`) also both passed, with
+greeter launch 58 ms and 42 ms after KWin stopped respectively. These
+are journal landmarks, not physical scanout measurements.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
