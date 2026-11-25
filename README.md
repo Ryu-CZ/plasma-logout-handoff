@@ -555,6 +555,15 @@ greeter uses KMS like the desktop (SDDM Wayland greeter); whether a
 KMS→KMS master change on this driver keeps the CRTC lit must be
 measured physically, since the VM cannot model it.
 
+Online search (Haiku subagent, snippet-level) found no report of a
+modeset-free DRM master handoff on NVIDIA, nor KWin/SDDM options to
+reuse the scanout at startup. Flicker-free handoff exists for
+i915/amdgpu (Plymouth → GDM, FOSDEM 2019 "Flicker Free Boot"): the
+next master skips the modeset when the mode matches, and the previous
+holder exits only once the successor is ready. That is the same
+pattern as the proposed holder, so the physical Wayland greeter trial
+(`loki-wayland-greeter-trial.sh`) is the deciding measurement.
+
 To repeat the stock capture, use an externally started, read-only
 monitor for the actual active VT and output timing. Align a camera time reference with
 the host journal, and capture monitor-side signal status if available.
