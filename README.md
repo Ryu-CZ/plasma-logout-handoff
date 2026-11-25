@@ -280,6 +280,18 @@ all user managers, so even a temporary override has that scope unless
 it checks the UID. No override, runtime-PM setting change, or
 prestarted manager was applied during this probe.
 
+The standalone candidate is `20-nvidia-rtd3-workaround`. In a follow-up
+test it emitted the same assignment in 2 ms with the NVIDIA device
+suspended both before and after. The [systemd environment generator
+manual](https://www.freedesktop.org/software/systemd/man/latest/systemd.environment-generator.html)
+confirms that a same-named file in `/run/systemd/user-environment-generators/`
+takes precedence over the generated vendor file. For a physical trial,
+scope the override to the greeter UID, delegate all other UIDs to
+the original, and remove the override after one logout. Leave the
+desktop and greeter at 100 Hz and do not pre-start the manager. Measure
+the original journal landmarks and allow teardown to finish before
+signing back in, since the live starters do not have the VM fixes.
+
 ### Combined login and lock regression
 
 `warm-combined-1795618921` ran the patched starters with the existing

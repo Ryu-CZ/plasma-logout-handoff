@@ -1,0 +1,12 @@
+#!/bin/sh
+# Preserve the chwd Mesa EGL workaround without reading PCI config space.
+for dev in /sys/bus/pci/devices/*; do
+    read -r vendor <"$dev/vendor" 2>/dev/null || continue
+    read -r class <"$dev/class" 2>/dev/null || continue
+    case "$vendor:$class" in
+        0x10de:0x0302??)
+            printf '%s\n' '__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json'
+            break
+            ;;
+    esac
+done
