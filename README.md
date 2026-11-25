@@ -550,6 +550,35 @@ visible blackout remained, X11 was restored, and the drop-in was absent.
 See [the decision plan](PLAN.md) for what did not work and
 [the trial record](HOLDER-DESIGN.md) for measurement limits.
 
+#### Stock X11 logout with a filmed uptime cue (23:31)
+
+`video_2026-11-25_23-31-33.mp4` shows live `/proc/uptime` in Konsole
+before logout. The visible clock at clip times ~1 s and ~5 s places
+video zero near boot time 21961.6 s, to within a few tenths of a second
+(clock display cadence 0.2 s, rendering delay not calibrated).
+Use the sampler's embedded uptime, not the journal arrival timestamp:
+one sample arrived ~0.10 s later. The cue matches the second sampler
+invocation. Local artifacts: `~/.cache/plasma-logout-handoff/loki-sync.MmjqHU/`.
+
+| Boot time (s) | Observation |
+| ---: | --- |
+| 21976.16 | tty5, CRTC active, DPMS On; sampled refresh changes from 144 to 60 Hz |
+| ~21976.2 | Panel goes apparently black (clip ~14.6 s) |
+| 21976.27–.29 | Desktop KWin service ends; SDDM starts Xorg on tty1 |
+| 21977.18 → .21 | tty1 first sampled active at 60 Hz, then detached with DPMS Off |
+| 21978.046 | SDDM greeter Connect; the clip is still dark |
+| ~21979.2 | Greeter artwork first visible (clip ~17.6 s) |
+| 21992.47 | Successful sign-in starts a new Plasma Wayland session |
+
+This run shows about 3 s from apparent black to visible greeter
+artwork. Black starts roughly a second **before** the sampled detach;
+the detach cannot explain the entire gap. Onset is near a sampled
+refresh change and desktop teardown, but neither is established as
+the cause. In particular, active DRM state does not distinguish black
+pixels from a blanking or resynchronizing monitor, and the sampler
+does not show Xorg's eventual visible output. No measured DP
+link-training event or monitor signal status was captured.
+
 To repeat the stock capture, use an externally started, read-only
 monitor for the actual active VT and output timing. Align a camera time reference with
 the host journal, and capture monitor-side signal status if available.

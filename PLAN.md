@@ -7,19 +7,15 @@ desktop teardown until the real greeter is visible and usable.** Keep
 Plasma Wayland and stock X11 SDDM as the baseline. Do not infer monitor
 behavior from VM screenshots or equate greeter connection with presentation.
 
-1. **Classify the physical gap before choosing a fix.** Existing evidence
-   already puts CRTC detach and DPMS-off near the VT change on stock X11.
-   The [artifact review](README.md#same-run-stock-video-and-telemetry-unaligned-clocks-2110)
-   found no common clock in the 21:10 video and trace; the 21:25 detach
-   samples are from separate runs. If resumed, take one read-only
-   capture during a separately approved normal stock logout: film the
-   panel and a host-timestamped cue (such as an audible marker recorded
-   by the camera), while logging VT, connector/CRTC and greeter events
-   against the same host clock. Capture monitor-side signal status if
-   available. The key observation is whether the apparent black starts
-   before, at, or after detach within the measured timing uncertainty.
-   Missing data after Xorg takes over are unknown, not proof of signal
-   loss or DisplayPort retraining.
+1. **Separate the two physical intervals.** In the [filmed uptime
+   capture](README.md#stock-x11-logout-with-a-filmed-uptime-cue-2331),
+   apparent black started roughly a second before the sampled detach,
+   near a 144 → 60 Hz transition and desktop teardown. Inspect the
+   pre-VT refresh transition in the existing logs before proposing a
+   patch. The later detach remains a separate barrier to continuity.
+   If the logs cannot identify why the earlier interval is dark,
+   monitor-side signal status is the missing observation; another
+   identical clip would not settle it.
 2. **Choose the remedy by interval.** If scanout stays active while pixels
    are black, investigate a coordinated last trusted frame / first greeter
    frame handoff. If the output switches off, investigate whether the
