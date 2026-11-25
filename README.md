@@ -145,6 +145,32 @@ own KWin stop. The runner correctly failed because no new desktop
 appeared. This establishes that overlapping shutdown can cause the
 observed failure, not that the physical PC had the same slow service.
 
+### VM ordering experiment
+
+Desktop logout queues `StopUnit(graphical-session.target, fail)`.
+The desktop starter exits when KWinWrapper and Shutdown release their
+bus names, which can precede completion of that stop transaction.
+The greeter starter likewise queues `StopUnit` calls without waiting
+for completion, including the KWin stop. Both incoming starters use
+`StartUnit(..., fail)`, correctly refusing to cancel previous stops.
+
+In the snapshot VM, combine `LOGOUT_VM_DELAY_STOP=1` with
+`LOGOUT_VM_START_BARRIER=both` (or `greeter` for the recovery control).
+The shell prototype waits only when relevant stop jobs are present
+and then execs the original starter:
+
+- Both barriers: `warm-barrier-1795618225` waited 4.18 s for desktop
+  teardown and reached a new desktop without a transaction conflict.
+- Greeter only: `warm-greeter-barrier-1795618242` still hit the desktop
+  race and could not reach a new desktop. The greeter waited 58 ms for
+  its own stop jobs and then connected a third time, restoring the
+  chance to retry rather than leaving a black screen.
+
+This is an isolation probe, not an installable fix. The job-list check
+and start are separate operations, and the test timeout does not define
+production recovery. A source fix should bind a wait to the original
+stop transaction and preserve normal failure handling.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash

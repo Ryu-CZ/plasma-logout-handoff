@@ -1,5 +1,6 @@
 """Sample emulated output during an actual Plasma logout in a disposable VM."""
 from concurrent.futures import ThreadPoolExecutor
+import base64
 import json
 import os
 from pathlib import Path
@@ -73,6 +74,21 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     command('mkdir -p /opt/probe; mount -o ro /dev/vdb /opt/probe && '
             'bash /opt/probe/arch-guest-setup.sh && echo LOGOUT_VM_SETUP_OK')
     wait_for(b"LOGOUT_VM_SETUP_OK", 60)
+    barrier = os.environ.get("LOGOUT_VM_START_BARRIER")
+    if barrier:
+        starters = {
+            "both": "startplasma-wayland startplasma-login-wayland",
+            "greeter": "startplasma-login-wayland",
+        }[barrier]
+        script = Path(__file__).resolve().with_name("vm-start-barrier.sh").read_bytes()
+        encoded = base64.b64encode(script).decode()
+        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
+                f'echo {encoded} | base64 -d >/tmp/logout-vm-barrier && '
+                f'(for name in {starters}; do '
+                'p=/usr/bin/$name; mv "$p" "$p.logout-vm-stock" && '
+                'install -m 755 /tmp/logout-vm-barrier "$p" || exit 1; '
+                'done) && printf "\\nLOGOUT_VM_BARRIER_INSTALLED\\n"')
+        wait_for(b"LOGOUT_VM_BARRIER_INSTALLED", 10)
     time.sleep(3)
     execute("screendump", filename=str(results / "initial-greeter.ppm"))
     def sign_in():
