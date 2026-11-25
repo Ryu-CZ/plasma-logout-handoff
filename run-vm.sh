@@ -48,6 +48,14 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     printf '%s\n' 'SDDM_BINARY' 'bsdtar -xpf /tmp/sddm-root.pkg -C / usr/bin/xsetroot' \
                         'printf "%s\\n" "/usr/bin/xsetroot -solid magenta && logger -t logout-vm SDDM_XSETROOT_OK" >>/usr/share/sddm/scripts/Xsetup'
                 fi
+                if [[ ${SDDM_VM_WALLPAPER:-0} == 1 ]]; then
+                    name=xwallpaper-0.7.6-1.1-x86_64_v3.pkg.tar.zst
+                    (cd "$packages"; printf '%s  %s\n' 6b182bb1489064b6efda6cdc97f6e47f5ed69fdff84ef9789b5cb9afe91bd069 "$name" | sha256sum -c - >&2)
+                    printf "base64 -d >/tmp/sddm-wallpaper.pkg <<'SDDM_BINARY'\n"
+                    base64 "$packages/$name"
+                    printf '%s\n' 'SDDM_BINARY' 'bsdtar -xpf /tmp/sddm-wallpaper.pkg -C / usr/bin/xwallpaper' \
+                        'printf "%s\\n" "/usr/bin/timeout 1s /usr/bin/xwallpaper --zoom $image && logger -t logout-vm SDDM_WALLPAPER_OK" "exit 0" >>/usr/share/sddm/scripts/Xsetup'
+                fi
                 line='systemctl start sddm.service'
             fi
             if [[ -n ${LOGOUT_VM_STOP_FIX:-} ]]; then

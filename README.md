@@ -387,6 +387,23 @@ reported ready earlier, but that did not translate to a shorter
 visible gap in this pair. QEMU cannot model the physical NVIDIA
 Xorg startup; this result does not justify a live backend change.
 
+The X11 wallpaper candidate (`SDDM_VM_WALLPAPER=1`) instead uses
+`xwallpaper --zoom` in Xsetup, with a one-second upper bound and no
+change to the greeter or its authentication. Supply the separately
+verified xwallpaper package alongside the other VM packages.
+In `sddm-combined-wallpaper-{0,1}-1795632992`, the same synthetic desktop
+wallpaper appeared at sample 014 (~0.56 s after the host request)
+with the hook; the control was still black then. The greeter appeared
+at 019 in the control and 020 with wallpaper. Both logged successful
+re-login and password-driven lock/unlock with the combined setup and
+desktop teardown patch. The VM greeter theme used a different photo,
+so this verifies an earlier wallpaper frame, not visual continuity
+into a matching greeter. The hook did not cover the earlier black
+samples, and it did not speed up greeter readiness (343 ms after
+KWin stopped in the control vs. 405 ms with the hook in this pair).
+On physical Manjaro it can only address the short interval after Xorg
+starts; do not describe it as a complete blackout fix.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
