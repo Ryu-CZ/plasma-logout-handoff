@@ -378,6 +378,15 @@ A separate VM A/B with an SDDM Wayland greeter is the next candidate
 for reducing startup time, not a replacement for the measured X11
 baseline.
 
+The backend comparison (`sddm-backend-{0,1}-1795632902`; opt in
+with `SDDM_VM_WAYLAND=1`) passed rapid re-login in both guests.
+KWin stop to greeter connect was 382 ms with X11 and 351 ms with
+Wayland. X11 first showed the greeter at sample 020, Wayland at
+021, with black samples before both. The Wayland display server
+reported ready earlier, but that did not translate to a shorter
+visible gap in this pair. QEMU cannot model the physical NVIDIA
+Xorg startup; this result does not justify a live backend change.
+
 For local timing (no sudo, if the current user can read the system journal):
 
 ```bash
