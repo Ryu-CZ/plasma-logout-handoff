@@ -399,9 +399,8 @@ about 150 ms after the hook. Xorg's own log had an approximately 886 ms
 gap around NVIDIA driver detection. That gap does not identify which
 operation consumed the time. A wallpaper in the X11 setup hook could
 only cover the tail, so it is not a good first physical experiment.
-A separate VM A/B with an SDDM Wayland greeter is the next candidate
-for reducing startup time, not a replacement for the measured X11
-baseline.
+A separate VM A/B tested whether an SDDM Wayland greeter reduced
+startup time without replacing the measured X11 baseline.
 
 The backend comparison (`sddm-backend-{0,1}-1795632902`; opt in
 with `SDDM_VM_WAYLAND=1`) passed rapid re-login in both guests.
@@ -429,31 +428,53 @@ KWin stopped in the control vs. 405 ms with the hook in this pair).
 On physical Manjaro it can only address the short interval after Xorg
 starts; do not describe it as a complete blackout fix.
 
-On `loki` at the usual 144 Hz, a temporary Xsetup hook drew Breath's
-stock wallpaper. Xorg took 1.55 s to reach Xsetup; the hook then took
-154 ms, and the greeter connected 155 ms after the draw was logged.
-Sign-in succeeded after the deliberate pause; this is not a rapid
-re-login or lock/unlock test. The draw log confirms the hook succeeded,
-not that the wallpaper was visible on the monitor. The user was unsure
-whether it appeared before the controls. Automatic rollback restored
-Xsetup byte-for-byte and removed the temporary helper; 144 Hz remained
-selected. A stock-versus-hook comparison is still needed.
+#### Physical follow-up on loki
 
-The requested phone clip from the hook-enabled `loki` trial
-(`video_2026-11-25_20-26-33.mp4`) shows a visibly black sample before
-the Breath greeter and black samples again after sign-in, before the
-desktop returns (reviewed at one frame per second). The hook did not
-eliminate the pre-greeter blackout.
+The Nov 25 journal identifies three returns at the usual 144 Hz
+desktop setting. Times at left are local; intervals are from the
+same boot's monotonic clock, rounded to milliseconds.
 
-Compared at 10 samples/s, the stock clip
-(`video_2026-11-25_20-42-24.mp4`) looks black from about 8.4 to 10.0 s
-(1.6 s); the hook clip looks black from about 11.6 to 13.2 s (1.6 s),
-followed by a brief dim non-black frame before Breath appears. These
-are clip-relative visual estimates from one run per configuration, not
-link measurements. The comparison shows no meaningful reduction in
-the visible logout blackout, so keep stock Xsetup. The videos do not
-distinguish signal loss from rendered black. Sign-in visuals are out
-of scope; immediate re-login and lock/unlock remain regression checks.
+| Xorg launch | Xsetup | Plasma shutdown service start → KWin exit | KWin exit → Xorg launch | Xorg launch → Xsetup | Xsetup → greeter connect |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 20:21:04 | Wallpaper hook | 705 ms | 17 ms | 1546 ms | 309 ms |
+| 20:25:41 | Stock | 657 ms | 17 ms | 1582 ms | 169 ms |
+| 20:41:39 | Stock | 675 ms | 17 ms | 1550 ms | 163 ms |
+
+SDDM selected VT 2 just before launching Xorg. This is a requested
+VT, not a timestamp for activation or scanout. The two retained stock
+Xorg logs both show an 886–887 ms gap after applying the NVIDIA
+OutputClass and before logging the autoconfigured driver list. The
+driver logged setting the mode about 1.14 s after launch. Neither
+landmark measures link training or tells us which operation caused
+the gap. The greeter's socket connection is not its first frame.
+
+The one confirmed hook draw logged success 154 ms into Xsetup, still
+after the long Xorg startup. Rollback completed at 20:23:44; a later
+read-only check found the helper absent and `pacman -Qkk sddm` reported
+zero altered package files. The confirmed trial ended in a successful
+sign-in after a deliberate pause, not a rapid re-login or lock test.
+
+At 10 samples/s, `video_2026-11-25_20-26-33.mp4` and the requested stock
+clip `video_2026-11-25_20-42-24.mp4` each show about 1.6 s of visible
+black on logout (11.6–13.2 s and 8.4–10.0 s, respectively). The first
+clip was initially labeled hook-enabled, but its media timestamp is
+closer to the 20:25 stock return than to the 20:21 confirmed hook run.
+The camera clock was not aligned to the journal; do not treat the
+clips as a verified stock-versus-hook visual A/B. They also cannot
+distinguish signal loss from rendered black.
+
+Keep stock Xsetup and the X11 backend. The hook cannot cover the
+measured Xorg startup, and the Wayland VM comparison found no shorter
+visible gap and did not model the physical NVIDIA path. Nothing here
+justifies changing session ordering or forcing an Xorg driver or mode.
+
+If further physical testing is warranted, first capture a normal
+stock logout with an externally started, read-only monitor for the
+actual active VT and output timing. Align a camera time reference with
+the host journal, and capture monitor-side signal status if available.
+Test a change only if that capture gives a specific hypothesis, with
+local user participation and rollback prepared. Check immediate
+re-login and lock/unlock separately; sign-in visuals are out of scope.
 
 For local timing (no sudo, if the current user can read the system journal):
 

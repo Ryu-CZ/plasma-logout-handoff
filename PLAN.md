@@ -59,18 +59,19 @@ proposing installation.
    mode switching alone does not explain it.
 4. **Validate on the real display only after isolated passes.** Keep the
    two experiments separate:
-   - **CachyOS / PLM:** At 100 Hz, try the temporary greeter-only sysfs
-     generator override with automatic removal. Measure cold manager
+   - **CachyOS / PLM (deferred):** If resumed, test at 100 Hz with the
+     temporary greeter-only sysfs generator override and automatic
+     removal. Measure cold manager
      startup and greeter return; neither a shorter delay nor a greeter
      wallpaper proves the intermediate modeset is gone.
-   - **Manjaro / SDDM:** Keep X11 and test a temporary Xsetup wallpaper
-     using a matching static asset. Preserve the existing hook and
-     authentication. Roll back if it adds a visible transition or
-     fails to improve the measured baseline. The Xorg startup gap is
-     outside this hook's reach. The stock and hook-enabled phone clips
-     both show about 1.6 s of visible black on logout. Keep stock Xsetup
-     (rollback verified); the clips do not distinguish signal loss from
-     rendered black.
+   - **Manjaro / SDDM:** Keep stock Xsetup and X11. The wallpaper
+     trial was rolled back. The journal puts roughly 1.55 s before
+     Xsetup and does not support a session ordering change. Both clips
+     show about 1.6 s of visible black; the first clip's hook attribution
+     is unverified. The Wayland VM comparison does not justify a
+     backend switch. Defer further live trials until a synchronized,
+     read-only capture can test a specific hypothesis about the
+     outgoing frame, VT activation, or display signal.
 
    Do not pre-start a user manager or replace display-manager services.
    First compare visuals with a deliberate pause before re-login; do
