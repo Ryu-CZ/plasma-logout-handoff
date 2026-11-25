@@ -96,6 +96,15 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     command(prep + f'[[ $(systemctl show "user@$g.service" -p ActiveState --value) == {expected} ]] '
             '&& echo LOGOUT_VM_CONDITION_OK')
     wait_for(b"LOGOUT_VM_CONDITION_OK", 20)
+    if os.environ.get("LOGOUT_VM_DELAY_STOP") == "1":
+        # A graphical-session member that outlives KWin during shutdown.
+        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
+                'runuser -u probe -- env XDG_RUNTIME_DIR="/run/user/$u" '
+                'systemd-run --user --unit=logout-vm-delay --property=Type=oneshot '
+                '--property=RemainAfterExit=yes --property=After=graphical-session.target '
+                '--property=PartOf=graphical-session.target --property="ExecStop=/usr/bin/sleep 6" '
+                '/usr/bin/true && printf "\\nLOGOUT_VM_DELAY_STARTED\\n"')
+        wait_for(b"LOGOUT_VM_DELAY_STARTED", 10)
     execute("screendump", filename=str(results / "desktop.ppm"))
 
     # Wait for a new greeter connection, not a fixed delay after sampling.
@@ -143,7 +152,10 @@ with (connect("serial") as serial, connect("qmp") as qmp,
             'journalctl -b --no-pager -o short-monotonic '
             '_SYSTEMD_UNIT=plasmalogin.service + "UNIT=user@$g.service" '
             '+ SYSLOG_IDENTIFIER=plasmalogin-helper + SYSLOG_IDENTIFIER=logout-vm '
-            '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service; '
+            '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service '
+            '+ USER_UNIT=logout-vm-delay.service '
+            '+ "_SYSTEMD_UNIT=user@$u.service" _COMM=systemd '
+            '+ "_SYSTEMD_UNIT=user@$g.service" _COMM=systemd; '
             'echo LOGOUT_VM_DONE')
     wait_for(b"LOGOUT_VM_DONE", 20)
     report = (results / "serial.log").read_bytes()

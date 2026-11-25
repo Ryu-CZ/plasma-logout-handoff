@@ -133,8 +133,17 @@ and `warm-roundtrip-1795617733` runs each logged two successful PLM
 authentications and reached a new active desktop session with plasmashell
 running. Neither logged a conflicting start/stop transaction. This is one
 pass per condition; the physical failure is not reproduced by the
-unmodified guest. The next test should deliberately widen the overlap
-with a delayed stop in the guest only.
+unmodified guest.
+
+With `LOGOUT_VM_DELAY_STOP=1`, the runner adds a transient guest-only
+service ordered after and stopped with `graphical-session.target`.
+Its stop command takes six seconds without keeping KWin running.
+`warm-delay-1795618054` reproduced **both** physical errors: the password
+was accepted, but desktop startup collided with the queued
+`graphical-session.target` stop; then greeter restart collided with its
+own KWin stop. The runner correctly failed because no new desktop
+appeared. This establishes that overlapping shutdown can cause the
+observed failure, not that the physical PC had the same slow service.
 
 For local timing (no sudo, if the current user can read the system journal):
 
