@@ -141,13 +141,13 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 'runuser -u probe -- env XDG_RUNTIME_DIR="/run/user/$u" '
                 'WAYLAND_DISPLAY="$display" QT_QPA_PLATFORM=wayland '
                 f'/usr/lib/qt6/bin/qml /tmp/holder-probe.qml -- {variant} '
-                '>/tmp/holder-probe.log 2>&1 & job=$!')
-        for index in range(45):
+                '2>&1 & job=$!')
+        wait_for(b"qml: HOLDER_PROBE_READY", 20)
+        for index in range(55):
             execute("screendump", filename=str(results / f"holder-{index:02d}.png"),
                     format="png")
             time.sleep(0.07)
-        command('wait "$job"; result=$?; cat /tmp/holder-probe.log; '
-                'printf "\\nHOLDER_PROBE_EXIT_%s\\n" "$result"')
+        command('wait "$job"; printf "\\nHOLDER_PROBE_EXIT_%s\\n" "$?"')
         wait_for(b"HOLDER_PROBE_EXIT_" + (b"3" if variant == "stall" else b"0"), 10)
         frames = sorted(results.glob("holder-*.png"))
         pixels = subprocess.check_output([

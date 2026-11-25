@@ -56,9 +56,17 @@ producer stalled past the timeout. A successful synthetic run is
 only a frame-switch test: it cannot satisfy the SDDM authentication
 or seat-isolation checks.
 
-The Qt probe passed its offscreen smoke checks, but guest run
-`holder-probe-1795640420` failed the pixel assertion: the active QEMU
-output kept showing Plasma's desktop even though Qt reported frame
-swaps. This is not evidence for or against continuity. A future run
-must first demonstrate that the test surface is visible on the
-captured output, then exercise stock, holder, and stalled variants.
+The initial guest run missed the probe because sampling started
+before its first frame. After synchronizing on that frame, QEMU
+screenshots passed all three synthetic scenarios:
+
+| VM artifact | Center-pixel sequence |
+| --- | --- |
+| `holder-probe-stock-1795640613` | Black → fake greeter |
+| `holder-probe-1795640578` | Holder → fake greeter, no sampled black |
+| `holder-probe-stall-1795640638` | Holder → timeout marker, no sampled black |
+
+These are full-screen colors in one Qt window on a running
+compositor. The timeout marker does not restart SDDM; no desktop
+session was stopped during the probe. Actual greeter recovery and
+seat integration remain untested.

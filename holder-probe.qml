@@ -15,7 +15,13 @@ Window {
          : phase === "greeter" || phase === "done" ? "#30965d"
          : phase === "fallback" || phase === "failed" ? "#aa36a5" : "#000000"
 
+    property bool ready: false
     onFrameSwapped: {
+        if (!ready) {
+            ready = true
+            console.warn("HOLDER_PROBE_READY")
+            transition.start()
+        }
         if (phase === "holder" || phase === "blank") {
             console.warn("PROBE", phase, "frame swapped")
             phase = phase === "holder" ? "waiting" : "waiting-black"
@@ -30,8 +36,8 @@ Window {
     }
 
     Timer {
-        interval: 500
-        running: true
+        id: transition
+        interval: 900
         onTriggered: {
             deadline.start()
             probe.phase = probe.variant === "stock" ? "blank" : "holder"
