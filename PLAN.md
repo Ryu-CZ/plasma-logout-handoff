@@ -11,13 +11,15 @@ behavior from VM screenshots or equate greeter connection with presentation.
    capture](README.md#stock-x11-logout-with-a-filmed-uptime-cue-2331),
    apparent black started roughly a second before the sampled detach,
    near a 144 → 60 Hz transition and desktop teardown. Inspect the
-   pre-VT refresh transition is reproducible in the two sampled runs,
-   but the logs do not name its caller. The later detach remains a
-   separate barrier to continuity. If a further diagnostic is worth
-   doing, add primary-plane FB/allocator and full timing to the
-   sampler and capture monitor-side signal status if available.
-   FB allocator identifies the buffer, not the commit caller.
-   Another identical clip would not settle the cause.
+   [follow-up capture](README.md#stock-x11-with-framebuffer-attribution-2340)
+   confirms a 4K 60 Hz console framebuffer before Xorg launch and
+   a separate detach during the second dark interval. The debugfs read
+   blocked through two flip timeouts, so it cannot time the earlier
+   change exactly. Do not repeat this capture unchanged. Any follow-up
+   should discriminate monitor resync from black content, or test
+   exact mode matching as an isolated diagnostic, not as a complete
+   fix. Use loki's measured 533.500 MHz console timing, not an unrelated
+   60 Hz timing; do not assume Plasma exposes an exact match.
 2. **Choose the remedy by interval.** If scanout stays active while pixels
    are black, investigate a coordinated last trusted frame / first greeter
    frame handoff. If the output switches off, investigate whether the

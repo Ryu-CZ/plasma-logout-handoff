@@ -597,6 +597,37 @@ restore from another teardown operation or determine monitor signal
 state. The earlier passive-fd run tested the later detach, not this
 144 → 60 Hz transition.
 
+#### Stock X11 with framebuffer attribution (23:40)
+
+`video_2026-11-25_23-40-25.mp4`; local artifacts
+`~/.cache/plasma-logout-handoff/loki-fb.9WI2iP/`. The newest
+visible cues at clip times 11 and 13 s read 22493.29 and 22495.29.
+Video zero is therefore near boot time 22482.3 s, with a few tenths
+of uncertainty. 10 Hz video sampling:
+
+| Clip time | Panel appearance |
+| ---: | --- |
+| 17.6–19.0 s | Apparently black |
+| 19.1–24.6 s | Dim visible field |
+| 24.7–26.2 s | Apparently black again |
+| ~26.4 s | Greeter artwork visible |
+
+The last pre-gap DRM sample at 22499.92 showed active DP-3,
+4K 144 Hz at 1328.800 MHz, and KWin buffers. The next sample
+blocked from 22500.03 to 22506.17. On return, plane 64 used
+FB 854, allocated by `[fbcon]`, at 4K 60 Hz (533.500 MHz) with
+the CRTC active on tty5. Two NVIDIA flip-event timeouts occurred
+within the blocked read. This confirms the console buffer and 60 Hz
+were present before Xorg launched at 22506.23; it does not time the
+change within the blocked read or attribute either black interval
+to that commit or to link retraining.
+
+At 22507.13 (clip ~24.8 s) tty1 still sampled the same console scanout;
+22507.15–.18 showed detach/DPMS-off during the **second** dark interval.
+Greeter Connect followed at 22508.11; visible artwork followed later.
+SDDM started a new Plasma Wayland session on re-login. Do not generalize
+this timeout-lengthened trace to the earlier filmed run without timeouts.
+
 To repeat the stock capture, use an externally started, read-only
 monitor for the actual active VT and output timing. Align a camera time reference with
 the host journal, and capture monitor-side signal status if available.
