@@ -338,6 +338,14 @@ actual timing on both sides and restore 144 Hz after login. If black
 remains with matched timings, a wallpaper hook still cannot cover the
 earlier Xorg initialization gap.
 
+The desktop-only comparison sampled 4K 60 Hz before logout and after
+sign-in (533.5 MHz DRM pixel clock), and Xrandr reported 4K 60 Hz in
+the unchanged greeter. The greeter's exact pixel clock was not captured,
+and there were samples with no readable mode during VT changes. SDDM
+connected 1.789 s after desktop KWin stopped, versus 1.743 s on the
+preceding 144 Hz run. Sign-in succeeded. The original 4K 144 Hz mode
+was restored and verified at 1328.8 MHz. Visual comparison pending.
+
 #### SDDM rapid re-login in the VM
 
 Run `SDDM_VM_PACKAGES=DIR bash run-vm.sh BASE NEW_RESULTS sddm`.
