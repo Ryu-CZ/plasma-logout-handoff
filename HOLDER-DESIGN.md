@@ -124,6 +124,27 @@ transitions; FB IDs don't identify content or the committing process.
 In this VM, compare the captured pixels against those transitions
 before chasing a controller disable. This is not an NVIDIA DP trace.
 
+### Pixels from that same run (offline)
+
+In `state-1795643557`, inspect whole images, not just a center pixel:
+
+```sh
+for f in frame-*.png; do
+    magick "$f" -colorspace sRGB -format '%f %[fx:mean] %[fx:maxima]\n' info:
+done
+```
+
+Match filenames to host-relative screendump start/end in `frames.tsv`.
+Frames 006–018 (13 samples; capture starts 0.241–0.723 s) have mean
+RGB ≤0.000011 on a 0–1 scale. Ten are entirely black (007 and 010–018);
+the other three have a few nonblack pixels. Frame 005 has mean 0.285
+and frame 019 has mean 0.278. Thus near-black samples span about
+0.48 s; this is not a measurement of uninterrupted darkness between
+samples. In the same logout, guest DRM samples showed changing FBs
+without observed controller disable. The host and guest clocks were
+not synchronized: no single FB ID, commit or process can be assigned
+to a black screenshot from these data. QEMU cannot measure DP signal.
+
 ## Physical stock Wayland diagnostic
 
 On Nov 25, logind recorded Wayland SDDM greeter sessions and the
