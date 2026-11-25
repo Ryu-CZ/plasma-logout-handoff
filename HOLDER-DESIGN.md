@@ -140,7 +140,16 @@ RGB ≤0.000011 on a 0–1 scale. Ten are entirely black (007 and 010–018);
 the other three have a few nonblack pixels. Frame 005 has mean 0.285
 and frame 019 has mean 0.278. Thus near-black samples span about
 0.48 s; this is not a measurement of uninterrupted darkness between
-samples. In the same logout, guest DRM samples showed changing FBs
+samples.
+
+The 175-frame capture also includes immediate re-login. Later, frames
+048–058 (starts 1.931–2.333 s) and 060–066 (2.414–2.655 s) were
+entirely black, separated by nonblack frame 059 (mean 0.275291).
+Count these separately, not as part of the initial logout interval.
+Across all 175 images, 31 met the near-black threshold and 28 were
+entirely black.
+
+In the same logout, guest DRM samples showed changing FBs
 without observed controller disable. The host and guest clocks were
 not synchronized: no single FB ID, commit or process can be assigned
 to a black screenshot from these data. QEMU cannot measure DP signal.
