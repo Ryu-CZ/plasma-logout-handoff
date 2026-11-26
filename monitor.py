@@ -128,15 +128,60 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     command(prep + f'[[ $(systemctl show "user@$g.service" -p ActiveState --value) == {expected} ]] '
             '&& echo LOGOUT_VM_CONDITION_OK')
     wait_for(b"LOGOUT_VM_CONDITION_OK", 20)
-    if os.environ.get("LOGOUT_VM_DELAY_STOP") == "1":
-        # A graphical-session member that outlives KWin during shutdown.
+    crash = os.environ.get("LOGOUT_VM_CRASH_REPORT")
+    if crash not in (None, "stock", "fixed"):
+        raise ValueError("LOGOUT_VM_CRASH_REPORT must be stock or fixed")
+    if os.environ.get("LOGOUT_VM_DELAY_STOP") == "1" or crash:
+        # A graphical-session member that outlives KWin during shutdown, like
+        # an app that is slow to quit (NetBird took 2.4 s on Vandal).
+        seconds = int(os.environ.get("LOGOUT_VM_DELAY_STOP_SECONDS", "6"))
         command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
                 'runuser -u probe -- env XDG_RUNTIME_DIR="/run/user/$u" '
                 'systemd-run --user --unit=logout-vm-delay --property=Type=oneshot '
                 '--property=RemainAfterExit=yes --property=After=graphical-session.target '
-                '--property=PartOf=graphical-session.target --property="ExecStop=/usr/bin/sleep 6" '
+                f'--property=PartOf=graphical-session.target --property="ExecStop=/usr/bin/sleep {seconds}" '
                 '/usr/bin/true && printf "\\nLOGOUT_VM_DELAY_STARTED\\n"')
         wait_for(b"LOGOUT_VM_DELAY_STARTED", 10)
+    if crash:
+        # Copies of drkonqi 6.8.3's coredump launcher units, dependencies
+        # unchanged; the service activates the portal and a11y bus as the Qt
+        # launcher does, then fails as it does without a display.
+        files = {
+            "logout-vm-crash.socket":
+                "[Unit]\nDefaultDependencies=no\nPartOf=plasma-core.target\n"
+                "After=plasma-kwin_wayland.service\nAfter=sockets.target\n"
+                "[Socket]\nListenSequentialPacket=%t/logout-vm-crash\n"
+                "SocketMode=0600\nAccept=yes\n",
+            "logout-vm-crash@.service":
+                "[Unit]\nPartOf=graphical-session.target\n"
+                "Requisite=graphical-session.target\n"
+                "[Service]\nRestart=no\nExecStart=/bin/sh -c '"
+                "logger -t logout-vm CRASH_REPORT_STARTED; "
+                "{ busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop "
+                "org.freedesktop.portal.Settings ReadOne ss org.freedesktop.appearance color-scheme; "
+                "busctl --user call org.a11y.Bus /org/a11y/bus org.a11y.Bus GetAddress; } 2>&1 "
+                "| logger -t logout-vm; "
+                # On Vandal xdg-desktop-portal kept re-activating portal-kde,
+                # which crashed without a display until its start limit.
+                "n=0; for i in $$(seq 40); do busctl --user call org.freedesktop.impl.portal.desktop.kde "
+                "/org/freedesktop/portal/desktop org.freedesktop.DBus.Peer Ping >/dev/null 2>&1 "
+                "|| n=$$((n+1)); sleep .1; done; logger -t logout-vm CRASH_REPORT_PINGS_FAILED=$$n; exit 1'\n",
+        }
+        if crash == "fixed":
+            files["logout-vm-crash.socket.d/stop-with-graphical-session.conf"] = (
+                "[Unit]\nPartOf=graphical-session.target\n")
+        install = "".join(
+            f'runuser -u probe -- mkdir -p "$(dirname "$d/{name}")" && '
+            f'echo {base64.b64encode(text.encode()).decode()} | base64 -d '
+            f'| runuser -u probe -- tee "$d/{name}" >/dev/null && '
+            for name, text in files.items())
+        command('d=/home/probe/.config/systemd/user; '
+                'p() { runuser -u probe -- env XDG_RUNTIME_DIR=/run/user/$u systemctl --user "$@"; }; '
+                + install +
+                'p daemon-reload && p start logout-vm-crash.socket && '
+                'p show logout-vm-crash.socket -p PartOf | sed "s/^/CRASH_SOCKET /" && '
+                'printf "\\nLOGOUT_VM_CRASH_ARMED\\n"')
+        wait_for(b"LOGOUT_VM_CRASH_ARMED", 10)
     execute("screendump", filename=str(results / "desktop.ppm"))
     variant = os.environ.get("LOGOUT_VM_HOLDER_PROBE")
     if variant:
@@ -293,6 +338,20 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             print(f"LOGOUT_VM_SHUTDOWN={shutdown} passed")
             sys.exit(0)
         raise RuntimeError(f"{shutdown} did not happen; see serial.log")
+    if crash:
+        # Report a "crash" once the slow app is stopping, i.e. while the stop
+        # job of graphical-session.target is still waiting for it.
+        connect_crash = ("import socket, sys; s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET); "
+                         "s.connect(sys.argv[1]); s.send(b'x')")
+        command('(for i in {1..400}; do '
+                '[[ $(p is-active logout-vm-delay.service) == deactivating ]] && break; sleep .025; done; '
+                'sleep .3; logger -t logout-vm "CRASH_TRIGGER delay=$(p is-active logout-vm-delay.service) '
+                'jobs=$(p list-jobs --no-legend | awk \'{print $2"/"$3}\' | tr "\\n" " ")"; '
+                f'if runuser -u probe -- python3 -c "{connect_crash}" "/run/user/$u/logout-vm-crash" 2>/dev/null; '
+                'then logger -t logout-vm CRASH_TRIGGER_CONNECTED; '
+                'else logger -t logout-vm CRASH_TRIGGER_REFUSED; fi; '
+                'sleep 3; logger -t logout-vm "AFTER_TEARDOWN graphical-session.target=$(p is-active graphical-session.target) '
+                'jobs=$(p list-jobs --no-legend | awk \'{print $2"/"$3}\' | tr "\\n" " ")") &')
     with (results / "frames.tsv").open("w") as times, ThreadPoolExecutor(1) as worker:
         start = time.monotonic()
         def clock_anchor():
@@ -323,7 +382,7 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
                 if returned.exception():
                     break
                 # Allow the password field to appear without interrupting captures.
-                next_key = time.monotonic() + .8
+                next_key = time.monotonic() + float(os.environ.get("LOGOUT_VM_RELOGIN_DELAY", ".8"))
             if next_key is not None and not attempted and time.monotonic() >= next_key:
                 key = next(keys)
                 execute("send-key", keys=[{"type": "qcode", "data": key}], **{"hold-time": 35})

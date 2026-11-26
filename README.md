@@ -91,6 +91,11 @@ the cause of either individual dark interval. The video is not committed.
 
 ## Open items
 
+- **Re-login can fail after logout (2026-11-26 21:01, Vandal).** The
+  password was accepted, then the screen stayed black; reboot needed. Cause
+  traced in the journal and the VM; user drop-in installed and passed one
+  logout. See
+  [the log entry](#vandal-failed-re-login-after-logout-2026-11-26-2101).
 - Try Shutdown from the Plasma menu on Vandal; so far only the VM has
   tested it.
 - After a KWin, Qt or Plasma Login Manager update, rebuild and reinstall the
@@ -836,3 +841,144 @@ For local timing (no sudo, if the current user can read the system journal):
 ```bash
 bash journal-timing.sh
 ```
+
+### Vandal: failed re-login after logout (2026-11-26 21:01)
+
+Holder v5 installed. The user logged out and signed back in about 8 s
+later. The password was accepted, but the screen stayed black and the PC
+had to be rebooted. Evidence: `journalctl -b -1` of boot `8e3c1363…`.
+Nothing was changed on the system during this analysis.
+
+Timeline (user manager of the desktop session):
+
+| Time | Event |
+| --- | --- |
+| 21:01:28.24 | Logout stops `plasma-workspace-wayland.target`; a stop job for `graphical-session.target` is queued and waits for the apps ordered after it. |
+| 21:01:28.28 | Holder switches to VT 1 (desktop KWin still has the card). |
+| 21:01:28.25–30.62 | NetBird takes 2.4 s to stop (17 ms in the 20:43 logout, which worked). |
+| 21:01:29.73 | Beeper's main process exits with a core dump (SIGTRAP). |
+| 21:01:30.046 | `plasma-workspace.target` stops **without** `graphical-session.target` having stopped first. |
+| 21:01:30.047 | `drkonqi-coredump-launcher@…` starts for Beeper's crash. |
+| 21:01:30.63–30.75 | Portal, document portal, a11y bus and `plasma-xdg-desktop-portal-kde` are D-Bus-activated again. |
+| 21:01:30.766 | `graphical-session.target: Failed to enqueue stop job, ignoring: … destructive (plasma-xdg-desktop-portal-kde.service has 'start' job queued …)`. |
+| 21:01:30.79 | Desktop KWin stops, the session closes; portal-kde crash-loops without a display until `start-limit-hit`. |
+| 21:01:31.70 | Greeter KWin: `logout-holder backdrop: first paint`. |
+| 21:01:36.55 | New login: `startplasma-wayland` reloads the user manager; a stop of `graphical-session.target` is queued right after. |
+| 21:01:36.65 | `Transaction for plasma-workspace-wayland.target/start is destructive (graphical-session.target has 'stop' job queued …)`. The desktop session ends. |
+| 21:01:36.76 | Restarted greeter: `plasma-login-wayland.target/start is destructive (plasma-login-kwin_wayland.service has 'stop' job queued …)`. No greeter appears; black until reboot. |
+
+The same signature occurred once before, at 17:14:49 (v3, Restart from
+the Plasma menu): JetBrains Toolbox took 4 s to stop, Beeper crashed, and
+`plasma-workspace.target` stopped 1 ms before the DrKonqi launcher
+started, without `graphical-session.target` stopping. Of 21 exits from
+Plasma in today's journals (boots −5 to 0), 19 stopped
+`graphical-session.target` within 0.2 s of Beeper stopping, and 2 (these
+two) never did. Beeper dumped core at 18 of them, so the crash itself is
+routine; what differs is a slow app keeping the target's stop job pending
+when the crash report arrives.
+
+Explanation (from the journal and systemd's job rules; not yet
+reproduced): `drkonqi-coredump-launcher@.service` (drkonqi 6.8.3) has
+`Requisite=graphical-session.target` and is started by its socket in
+`replace` mode. Starting it adds a "verify active" job for
+`graphical-session.target`, which conflicts with the pending stop job, so
+the stop is cancelled. That lets `plasma-workspace.target` stop at once
+(the 1 ms ordering above). The launcher, a Qt program, then activates the
+portals and a11y bus, which are `PartOf=graphical-session.target`. When
+systemd later tries to stop the now-unneeded target, the portals' queued
+start jobs make that stop "destructive", and systemd gives up
+("ignoring"). The target stays active and empty until the next login's
+reload queues its stop, which collides with the new session's start.
+It is the only unit on Vandal with `Requisite=graphical-session.target`.
+
+This is independent of the holder (the 17:14 case was a restart, and
+nothing in the chain uses the VT), but the holder makes a fast re-login
+easy. The source-level teardown prototype above would not have helped:
+by the time `startplasma-wayland` exits, the target has queued start
+jobs, so its `--job-mode=fail` stop is refused. The second failure
+(greeter restart refused while its old KWin is still stopping) is what
+turns a failed login into a permanent black screen; the greeter half of
+that prototype addresses it.
+
+#### VM reproduction and candidate fix (`crash-batch.i7moFf`)
+
+The guest has no DrKonqi, so `LOGOUT_VM_CRASH_REPORT=stock|fixed` installs
+copies of its two coredump-launcher units under other names, dependencies
+unchanged. The service activates the portal, the a11y bus and (40 times,
+0.1 s apart) portal-kde, as the crash loop on Vandal did. A user unit that
+takes `LOGOUT_VM_DELAY_STOP_SECONDS` (2 here, like NetBird) to stop stands
+in for the slow app. Once that unit is stopping, a root job connects to the
+socket ("crash report") and logs the pending jobs; 3 s later it logs the
+state of `graphical-session.target`. `fixed` adds the candidate drop-in,
+`PartOf=graphical-session.target`, on the socket.
+`LOGOUT_VM_RELOGIN_DELAY=5` signs back in 5 s after the greeter connects
+(the default 0.8 s is far quicker than a person). Holder v5 installed, cold
+greeter.
+
+| Run | Pending jobs at the report | Report | `graphical-session.target` | Re-login |
+| --- | --- | --- | --- | --- |
+| stock-1…4 | slow unit, `plasma-workspace.target`, `graphical-session.target` stop | accepted; `plasma-workspace.target` stopped < 0.1 ms after the report's unit was created, without the target stopping first | stock-1, -3, -4: not stopped during logout; stock-4: still `active`, no jobs, 3 s after the report. stock-2 (no portal-kde loop): stopped 1.7 s later, once the portal had started | passed |
+| fixed-1, fixed-2 | same | refused: socket already closed 0.6 s after the logout request | stopped when the slow unit finished (2.0 s) | passed |
+| control-1 (no report) | — | — | stopped when the slow unit finished | passed |
+| fixed-reboot, fixed-halt | — | — | — | guest went down |
+
+So the VM reproduces the cause (the report cancels the pending stop) and
+the stuck target, and the drop-in removes both. It did not reproduce the
+final failure: the guest signed in again even with the stuck target, so the
+reload at sign-in did not queue the late stop here as it did on Vandal
+(where the re-activated portals were still running). Whether the drop-in
+prevents the black screen on Vandal can only be shown there.
+Runs 1–2 predate the portal-kde loop and the state log; stock-3 has the
+loop but not the log.
+
+#### Vandal: drop-in installed (2026-11-26)
+
+Installed as the user (no sudo), after the VM runs above:
+`~/.config/systemd/user/drkonqi-coredump-launcher.socket.d/stop-with-graphical-session.conf`
+(`[Unit]` / `PartOf=graphical-session.target`), then
+`systemctl --user daemon-reload`. Verified: the socket's `PartOf` is now
+`plasma-core.target graphical-session.target`, its drop-in path is listed,
+and it is still active. Undo: delete the file and reload again.
+
+Verified by one logout (below). To check a later logout, look at the
+previous user session's teardown (`journalctl -b --user` or the system
+journal) for:
+
+- `Closed Socket to launch DrKonqi for a systemd-coredump crash` right at
+  the start of teardown (it used to close only after the Plasma workspace
+  target stopped);
+- no `Started Launch DrKonqi for a systemd-coredump crash` during teardown,
+  although Beeper dumps core;
+- `Stopped target Current graphical user session`, and no
+  `graphical-session.target: Failed to enqueue stop job`.
+
+```bash
+journalctl --since -10min -o short-precise --no-pager \
+  -g 'Socket to launch DrKonqi|Launch DrKonqi|Current graphical user session|Failed to enqueue|contradicts existing jobs|Stopped Beeper|Removed session'
+```
+
+Beeper's own crash was reported to Beeper by the user (in-app report). A
+researcher found Chromium issue 580525223 (marked fixed upstream, November
+2026): the browser process sits in its own scope, so stopping the launcher
+unit kills its zygote and GPU helpers and the browser hits "GPU process
+isn't usable". The journal's `app-Beeper-….scope` fits this. The issue page
+could not be opened here; this is the researcher's reading.
+
+First logout with the drop-in (2026-11-26 22:14, holder v5): Beeper dumped
+core again (SIGTRAP), but the socket was already closed
+(`Closed Socket to launch DrKonqi` at 22:14:13.584, 0.1 ms after
+`plasma-workspace-wayland.target` stopped; it used to close after the
+Plasma workspace target). DrKonqi's system-side processor logged
+`"Connection refused"` and no launcher started. `Stopped target Current
+graphical user session` followed 1 ms after Beeper stopped; no
+`Failed to enqueue` and no conflicting transaction. Sign-in 6.4 s after
+the session closed reached a new desktop, and the socket was listening
+again at 22:14:22. One logout, without a slow app, so this shows the
+trigger is gone, not that the 2-in-21 race can no longer happen.
+
+Unrelated to the drop-in: 2.4 s passed between the greeter session start
+and its first user unit (22:14:15.50 → 17.90), against 0.4 s at 21:01. That
+matches the known `/etc/profile.d/nvidia-rtd3-workaround.sh` `lspci` delay
+with the GPU suspended (see "Cold user-manager delay"); the file is still
+installed. The holder kept the picture meanwhile (backdrop first paint
+22:14:18.58).
