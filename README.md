@@ -315,7 +315,16 @@ to greeter startup delay. GPU runtime state was not captured
 immediately before both logouts, so it is not a controlled cold-state
 repeat. Connect does not measure display presentation; this run was
 not filmed and did not test immediate re-login or lock/unlock.
-Prefer a fix to the CachyOS generator over keeping the trial override.
+CachyOS already [replaced the PCI probe](https://github.com/CachyOS/chwd/pull/282)
+and then [removed the workaround](https://github.com/CachyOS/chwd/pull/283).
+Vandal's installed `chwd 1.25.0-1` graphics profile no longer references
+it, but the generated files at
+`/usr/lib/systemd/user-environment-generators/20-nvidia-rtd3-workaround`
+and `/etc/profile.d/nvidia-rtd3-workaround.sh` are still present and not
+owned by a package. Treat them as leftovers on this machine, not a
+reason to submit a duplicate fast-probe patch. The trial preserved the
+Mesa EGL selection; removing both files entirely has not been tested
+on Vandal.
 
 ### Combined login and lock regression
 
