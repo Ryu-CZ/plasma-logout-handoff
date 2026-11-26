@@ -323,8 +323,37 @@ it, but the generated files at
 and `/etc/profile.d/nvidia-rtd3-workaround.sh` are still present and not
 owned by a package. Treat them as leftovers on this machine, not a
 reason to submit a duplicate fast-probe patch. The trial preserved the
-Mesa EGL selection; removing both files entirely has not been tested
-on Vandal.
+Mesa EGL selection; the removal trial below tested a different change.
+
+### Vandal: temporarily disabling both retired files
+
+The [cleanup trial](vandal-rtd3-cleanup-trial.sh) moved both generated
+files aside before logout. No display settings changed.
+
+| Journal interval | Stock | Fast probe, Mesa EGL kept | Both files disabled |
+| --- | ---: | ---: | ---: |
+| Greeter user-manager PAM opened → first target queued | 2.348 s | 0.058 s | 0.061 s |
+| PLM greeter session started → greeter Connect | 0.810 s | 0.840 s | 3.458 s |
+| Desktop KWin ended → greeter Connect | 3.237 s | 0.987 s | 3.588 s |
+
+Full removal avoided the slow probe but was not faster overall in
+this run: the greeter's KWin service took 2.94 s from Starting to
+Started. The logs do not establish why it took longer. A new Wayland
+desktop session started, the locker ran and the session returned to
+unlocked, and the NVIDIA GPU reported `suspended` / `D3cold`.
+The desktop reused its existing user manager, which still had the
+Mesa EGL assignment. Thus this did not validate idle GPU behavior
+or login from a fresh desktop manager without the workaround.
+No video measured presentation. Local artifacts:
+`~/.cache/plasma-logout-handoff/vandal-rtd3-cleanup.w4pqL3/`.
+
+The original rollback timer fired but did not restore the files:
+systemd expanded the inline shell's parameter expressions before
+passing them to Bash. Both backups survived. Use the trial script's
+`--restore` path to restore directly. The script now passes
+`--expand-environment=no`; a transient timer test against temporary
+files verified the correction. Keep the originals for now; only the
+fast probe with Mesa EGL preserved showed a shorter connection time.
 
 ### Combined login and lock regression
 

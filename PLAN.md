@@ -111,12 +111,13 @@ proposing installation.
    - **CachyOS / PLM:** The one-logout [generator trial](README.md#vandal-greeter-only-generator-ab)
      reduced KWin exit → greeter Connect from 3.24 s to 0.99 s.
      Re-login and automatic removal passed. CachyOS already sped up
-     and then removed the workaround upstream. Vandal still has two
-     unowned generated files; identify the supported cleanup path, or
-     test reversible removal with separate approval and verify login,
-     lock/unlock and NVIDIA runtime suspend. Do not keep the trial
-     override or send a duplicate fast-probe patch. The trial did not
-     measure first visible presentation.
+     and then removed the workaround upstream. Temporarily disabling
+     both leftover files on Vandal kept the manager startup fast but
+     did not shorten KWin exit → greeter Connect (3.59 s). Keep the
+     originals after rollback; a reused desktop user manager limits
+     what the idle GPU check proves. Do not assume cleanup fixes
+     logout or send a duplicate fast-probe patch. None of these trials
+     measured first visible presentation.
    - **Manjaro / SDDM:** Keep stock Xsetup and X11. The wallpaper
      trial was rolled back. The journal puts roughly 1.55 s before
      Xsetup and does not support a session ordering change. Both clips

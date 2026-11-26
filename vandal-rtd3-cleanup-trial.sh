@@ -55,7 +55,8 @@ for file in "${files[@]}"; do
     fi
 done
 
-systemd-run --unit="$unit" --on-active=4min --timer-property=AccuracySec=1s --collect \
+# The rollback body uses Bash parameter expansion; pass it literally.
+systemd-run --unit="$unit" --on-active=4min --timer-property=AccuracySec=1s --collect --expand-environment=no \
     /usr/bin/bash -c "$restore" restore "${files[@]}"
 systemctl is-active --quiet "$unit.timer"
 trap '/usr/bin/bash -c "$restore" restore "${files[@]}"' EXIT
