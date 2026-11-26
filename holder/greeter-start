@@ -1,0 +1,31 @@
+#!/bin/sh
+# Installed by logout-holder. Starts the login screen's compositor or
+# wallpaper program: the logout-holder copies while every package they were
+# built against is still installed at the same version (PACKAGES, pacman
+# database names), otherwise the program that ran before logout-holder was
+# installed. A package update therefore never leaves the login screen
+# running a copy built against older libraries.
+#   greeter-start kwin [KWIN ARGS...] | greeter-start wallpaper
+lib=/usr/local/lib/logout-holder
+stale=
+while read -r package; do
+    [ -z "$package" ] || [ -d "/var/lib/pacman/local/$package" ] || stale="$stale $package"
+done <"$lib/PACKAGES"
+if [ -n "$stale" ]; then
+    echo "logout-holder: changed since install:$stale; starting the stock $1 (reinstall a rebuilt bundle to get the backdrop back)" >&2
+fi
+what=$1
+shift
+case $what in
+kwin)
+    [ -n "$stale" ] && exec /usr/bin/kwin_wayland "$@"
+    export LD_LIBRARY_PATH="$lib/greeter"
+    exec "$lib/greeter/kwin_wayland" "$@"
+    ;;
+wallpaper)
+    [ -n "$stale" ] && exec $(cat "$lib/wallpaper-fallback")
+    exec "$lib/greeter/plasma-login-wallpaper"
+    ;;
+esac
+echo "usage: $0 kwin|wallpaper" >&2
+exit 2

@@ -55,7 +55,7 @@ index a2fc64f..7f648a8 100644
  
          const auto targetSize = renderTarget.size();
 diff --git a/src/scene/workspacescene.cpp b/src/scene/workspacescene.cpp
-index 868edeb..0147706 100644
+index 868edeb..b11af55 100644
 --- a/src/scene/workspacescene.cpp
 +++ b/src/scene/workspacescene.cpp
 @@ -69,6 +69,7 @@
@@ -117,7 +117,7 @@ index 868edeb..0147706 100644
          return {containerItem()};
      }
  
-@@ -732,12 +753,41 @@ bool WorkspaceScene::finalPaintScreen(const RenderTarget &renderTarget, const Re
+@@ -732,12 +753,60 @@ bool WorkspaceScene::finalPaintScreen(const RenderTarget &renderTarget, const Re
      }
  }
  
@@ -127,15 +127,34 @@ index 868edeb..0147706 100644
 +        return false;
 +    }
 +    const auto windows = workspace()->windows();
-+    return std::ranges::none_of(windows, [](const Window *window) {
-+        return window->isDesktop() && !window->isDeleted();
-+    });
++    if (std::ranges::none_of(windows, [](const Window *window) {
++            return window->isDesktop() && !window->isDeleted();
++        })) {
++        return true;
++    }
++    // VM prototype: stay underneath a new desktop window for a while, because
++    // it may be transparent until its picture has loaded.
++    if (!m_backdropCovered.isValid()) {
++        m_backdropCovered.start();
++    }
++    if (m_backdropCovered.elapsed() < 3000) {
++        return true;
++    }
++    static bool loggedEnd = false;
++    if (!std::exchange(loggedEnd, true)) {
++        qWarning("logout-holder backdrop: desktop window covers it, stopped");
++    }
++    return false;
 +}
 +
 +bool WorkspaceScene::paintStartupWallpaper(const RenderTarget &target, const RenderViewport &viewport, const Region &region)
 +{
 +    if (!backdropNeeded() || region.isEmpty() || waylandServer()->isScreenLocked()) {
 +        return true;
++    }
++    static bool loggedStart = false;
++    if (!std::exchange(loggedStart, true)) {
++        qWarning("logout-holder backdrop: first paint");
 +    }
 +    const auto rect = viewport.renderRect();
 +    const auto source = m_startupWallpaper->image().size();
@@ -159,7 +178,7 @@ index 868edeb..0147706 100644
  
      for (const Phase2Data &paintData : std::as_const(m_paintContext.phase2Data)) {
          if (!paintWindow(renderTarget, viewport, paintData.item, paintData.mask, paintData.deviceRegion)) {
-@@ -779,6 +829,9 @@ bool WorkspaceScene::paintSimpleScreen(const RenderTarget &renderTarget, const R
+@@ -779,6 +848,9 @@ bool WorkspaceScene::paintSimpleScreen(const RenderTarget &renderTarget, const R
      }
  
      renderer->renderBackground(renderTarget, viewport, visible);
@@ -170,10 +189,18 @@ index 868edeb..0147706 100644
      for (const Phase2Data &paintData : std::as_const(m_paintContext.phase2Data)) {
          if (!paintWindow(renderTarget, viewport, paintData.item, paintData.mask, paintData.deviceRegion)) {
 diff --git a/src/scene/workspacescene.h b/src/scene/workspacescene.h
-index 21d56df..346c4cd 100644
+index 21d56df..b04090f 100644
 --- a/src/scene/workspacescene.h
 +++ b/src/scene/workspacescene.h
-@@ -18,6 +18,7 @@ namespace KWin
+@@ -12,12 +12,15 @@
+ #include "core/renderviewport.h"
+ #include "scene/scene.h"
+ 
++#include <QElapsedTimer>
++
+ namespace KWin
+ {
+ 
  class DragAndDropIconItem;
  class EffectWindow;
  class EglContext;
@@ -181,7 +208,7 @@ index 21d56df..346c4cd 100644
  class Item;
  class WindowItem;
  class WindowPaintData;
-@@ -116,7 +117,10 @@ private:
+@@ -116,7 +119,11 @@ private:
      void createDndIconItem();
      void destroyDndIconItem();
      void updateCursor();
@@ -189,6 +216,7 @@ index 21d56df..346c4cd 100644
 +    bool paintStartupWallpaper(const RenderTarget &target, const RenderViewport &viewport, const Region &region);
  
 +    std::unique_ptr<ImageItem> m_startupWallpaper;
++    mutable QElapsedTimer m_backdropCovered;
      PaintContext m_paintContext;
      std::unique_ptr<Item> m_containerItem;
      std::unique_ptr<Item> m_overlayItem;

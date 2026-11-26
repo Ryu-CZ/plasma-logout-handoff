@@ -1,5 +1,13 @@
 # Logout handoff plan
 
+## Scope (user, 2026-11-26)
+
+Logout only: from choosing Log Out until the greeter is visible. Login,
+lock and unlock belong to sibling projects and are no longer gates here;
+older sections that list them are superseded on that point. Shutdown and
+reboot are not goals, but share Plasma's teardown, so a change here must
+leave them behaving as before.
+
 ## Decision plan for loki
 
 **Success means the physical monitor keeps showing a trusted image from
@@ -57,7 +65,15 @@ three-stage picture relay, gap stage first, VM only. See the
 Prototype: `relay.py`, enabled with `LOGOUT_VM_RELAY=1`.
 VM result: 1-3 black captures with relay and compositor backdrop, against
 15-17 stock ([details](HOLDER-DESIGN.md#relay-vm-results-all-three-stages-together)).
-Not yet black-free; nothing installed. This supersedes
+With the console switch and a transparent greeter wallpaper window,
+[six logouts showed no black capture](HOLDER-DESIGN.md#relay-vm-results-console-switch-and-transparent-wallpaper-window).
+The gap stage [does not need to paint](HOLDER-DESIGN.md#switch-only-no-painting):
+keeping the card open and switching the VT also gave six of six without
+black (`LOGOUT_VM_RELAY=switch`); this is now the simpler candidate.
+A [first installable version](HOLDER-DESIGN.md#first-installable-version-holder)
+(`holder/`) gave six of six VM logouts without black. Not installed on Vandal.
+Next gates: keep the holder out of shutdown and reboot, stalled greeter
+and timeout recovery, a real wallpaper. Nothing installed. This supersedes
 the earlier advice below to defer a handoff owner; the two Vandal fixes
 are a separate matter.
 
@@ -101,10 +117,12 @@ planned. The override has expired; the boot parameter lasts until reboot.
 **Decision, 2026-11-26:** the user reports lock/unlock still works and
 asked to keep both. `vandal-keep-handoff.sh` makes them permanent (Limine
 drop-in plus greeter-only `/etc` generator override; `--restore` undoes
-both). Staged and syntax-checked, **not yet run**. After running it:
-reboot, check `/proc/cmdline`, log out and sign in immediately, then lock
-and unlock. Immediate re-login remains untested. The parameter applies to
-any display on DP-1.
+both). **Run 2026-11-26 14:05**, rebooted. One logout and re-login on a
+home `HDMI-A-1` monitor worked, but the greeter was no faster: a second
+`lspci` probe in `/etc/profile.d` is
+[probably why](README.md#vandal-kept-changes-home-monitor-second-gpu-lookup-found).
+Fixing it is proposed, not applied. The parameter applies to any display
+on DP-1.
 
 1. One boot only: in Limine, edit the entry and append the parameter. Use
    the built-in or USB keyboard; Bluetooth does not work there.

@@ -1,0 +1,28 @@
+diff --git a/src/frontend/wallpaper/main.cpp b/src/frontend/wallpaper/main.cpp
+index 273ba52..1d125a2 100644
+--- a/src/frontend/wallpaper/main.cpp
++++ b/src/frontend/wallpaper/main.cpp
+@@ -17,6 +17,8 @@ int main(int argc, char **argv)
+     format.setOption(QSurfaceFormat::ResetNotification);
+     QSurfaceFormat::setDefaultFormat(format);
+ 
++    QQuickWindow::setDefaultAlphaBuffer(true);
++
+     WallpaperApp app(argc, argv);
+ 
+     return app.exec();
+diff --git a/src/frontend/wallpaper/wallpaperapp.cpp b/src/frontend/wallpaper/wallpaperapp.cpp
+index cc66ee7..e14f847 100644
+--- a/src/frontend/wallpaper/wallpaperapp.cpp
++++ b/src/frontend/wallpaper/wallpaperapp.cpp
+@@ -61,7 +61,9 @@ void WallpaperApp::createWindowForScreen(QScreen *screen)
+     WallpaperWindow *window = new WallpaperWindow(m_engine.get());
+     window->QObject::setParent(this);
+     window->setScreen(screen);
+-    window->setColor(Qt::black);
++    // VM prototype: the image loads only once this window is exposed. Stay
++    // transparent meanwhile, so the compositor's backdrop shows through.
++    window->setColor(Qt::transparent);
+ 
+     connect(qApp, &QGuiApplication::screenRemoved, window, [window](QScreen *screenRemoved) {
+         if (screenRemoved == window->screen()) {

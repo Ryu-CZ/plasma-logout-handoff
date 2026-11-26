@@ -1,0 +1,193 @@
+#!/usr/bin/python3 -I
+"""Keep the departing desktop's last frame on screen until the login screen appears.
+
+Started as logout-holder.service by Plasma's shutdown-script hook, just before
+the desktop stops (logout, and for now also shutdown and restart).
+
+1. Opens each graphics card that drives a screen, without taking control
+   (DRM master). While any process has the card open, the kernel does not put
+   the text console back when the desktop's compositor closes it, so the
+   compositor's last frame stays on screen.
+2. Puts the login screen's console (VT) in graphics mode and switches to it,
+   so the departing console's return to text mode happens out of sight.
+3. Exits shortly after the login screen's compositor has the card open.
+
+With --cleanup (ExecStopPost): if no login screen compositor is running and
+its console is in front, put that console back in text mode, as without this
+helper. The service is stopped at shutdown, so it cannot delay one.
+"""
+import fcntl
+import glob
+import os
+import pwd
+import re
+import socket
+import subprocess
+import sys
+import time
+
+GREETER_USER = "plasmalogin"
+GREETER_VT = 1
+LIMIT = 15.0   # seconds to wait for the login screen compositor
+LINGER = 2.0   # seconds to keep the card open after it appears
+KDSETMODE, KD_TEXT, KD_GRAPHICS = 0x4B3A, 0, 1
+VT_ACTIVATE = 0x5606
+DRM_IOCTL_DROP_MASTER = 0x641F
+
+
+def log(*words):
+    print(f"{time.monotonic():.3f}", *words, flush=True)
+
+
+def notify(state):
+    path = os.environ.get("NOTIFY_SOCKET", "")
+    if not path:
+        return
+    if path.startswith("@"):
+        path = "\0" + path[1:]
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM | socket.SOCK_CLOEXEC) as s:
+        s.connect(path)
+        s.sendall(state.encode())
+
+
+def loginctl(*args):
+    result = subprocess.run(["/usr/bin/loginctl", *args], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def active_session():
+    """(uid, vt) of seat0's active session, or None."""
+    session = loginctl("show-seat", "seat0", "-p", "ActiveSession", "--value")
+    if not session:
+        return None
+    fields = dict(line.split("=", 1) for line in loginctl(
+        "show-session", session, "-p", "User", "-p", "VTNr").splitlines() if "=" in line)
+    try:
+        return int(fields["User"]), int(fields["VTNr"])
+    except (KeyError, ValueError):
+        return None
+
+
+def foreground_vt():
+    with open("/sys/class/tty/tty0/active") as f:
+        return int(f.read().strip().removeprefix("tty"))
+
+
+def processes(uid, prefix):
+    for entry in os.scandir("/proc"):
+        if not entry.name.isdigit():
+            continue
+        try:
+            if entry.stat().st_uid != uid:
+                continue
+            with open(f"/proc/{entry.name}/comm") as comm:
+                if comm.read().startswith(prefix):
+                    yield int(entry.name)
+        except OSError:
+            pass  # The process exited while we looked.
+
+
+def has_card_open(pid):
+    try:
+        return any(os.readlink(fd.path).startswith("/dev/dri/card")
+                   for fd in os.scandir(f"/proc/{pid}/fd"))
+    except OSError:
+        return False
+
+
+def greeter_compositors(uid):
+    return list(processes(uid, "kwin_wayland"))
+
+
+def set_vt_mode(mode):
+    fd = os.open(f"/dev/tty{GREETER_VT}", os.O_RDWR | os.O_NOCTTY | os.O_CLOEXEC)
+    try:
+        fcntl.ioctl(fd, KDSETMODE, mode)
+    finally:
+        os.close(fd)
+
+
+def open_cards():
+    """Open cards with an enabled connector; never keep DRM master."""
+    cards = []
+    for path in sorted(glob.glob("/sys/class/drm/card*")):
+        name = os.path.basename(path)
+        if not re.fullmatch(r"card\d+", name):
+            continue
+        enabled = False
+        for connector in glob.glob(f"{path}/{name}-*/enabled"):
+            with open(connector) as f:
+                enabled |= f.read().strip() == "enabled"
+        if not enabled:
+            continue  # Opening an idle card could wake it (e.g. a discrete GPU).
+        fd = os.open(f"/dev/dri/{name}", os.O_RDWR | os.O_CLOEXEC)
+        try:
+            # Opening a card that nobody controls makes us its master: give it back.
+            fcntl.ioctl(fd, DRM_IOCTL_DROP_MASTER)
+        except OSError:
+            pass  # Not master, as expected while the desktop owns the card.
+        cards.append((name, fd))
+    return cards
+
+
+def cleanup(greeter_uid):
+    if greeter_compositors(greeter_uid) or foreground_vt() != GREETER_VT:
+        return
+    set_vt_mode(KD_TEXT)
+    log(f"no login screen: console {GREETER_VT} back in text mode")
+
+
+def main():
+    greeter_uid = pwd.getpwnam(GREETER_USER).pw_uid
+    if sys.argv[1:] == ["--cleanup"]:
+        cleanup(greeter_uid)
+        return
+    session = active_session()
+    if session is None:
+        log("refused: no active session on seat0")
+        return
+    uid, vt = session
+    if uid == greeter_uid or vt in (0, GREETER_VT) or foreground_vt() != vt:
+        log(f"refused: active session uid={uid} vt={vt} is not a desktop in front")
+        return
+    if not any(processes(uid, "plasma-shutdown")):
+        log(f"refused: no Plasma logout in progress for uid={uid}")
+        return
+    if greeter_compositors(greeter_uid):
+        log("refused: a login screen compositor is already running")
+        return
+
+    cards = open_cards()
+    if not cards:
+        log("refused: no card drives a screen")
+        return
+    log("holding", " ".join(name for name, _ in cards), f"from vt={vt}")
+    set_vt_mode(KD_GRAPHICS)
+    fd = os.open(f"/dev/tty{GREETER_VT}", os.O_RDWR | os.O_NOCTTY | os.O_CLOEXEC)
+    try:
+        fcntl.ioctl(fd, VT_ACTIVATE, GREETER_VT)
+    finally:
+        os.close(fd)
+    deadline = time.monotonic() + 2
+    while foreground_vt() != GREETER_VT:
+        if time.monotonic() > deadline:
+            log("switch to the login screen console timed out")
+            if foreground_vt() != GREETER_VT:
+                set_vt_mode(KD_TEXT)  # Leave the hidden console as it was.
+            return
+        time.sleep(.005)
+    log(f"switched to vt={GREETER_VT}")
+    notify("READY=1")
+
+    deadline = time.monotonic() + LIMIT
+    while time.monotonic() < deadline:
+        if any(has_card_open(pid) for pid in greeter_compositors(greeter_uid)):
+            log("login screen compositor has the card")
+            time.sleep(LINGER)
+            return
+        time.sleep(.01)
+    log(f"no login screen compositor after {LIMIT:.0f} s")
+
+
+if __name__ == "__main__":
+    main()

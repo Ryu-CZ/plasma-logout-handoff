@@ -2,12 +2,25 @@
 
 Prepare a framebuffer while the desktop still owns the display. Whenever the
 display has no owner and shows something else, take DRM master, show the
-picture and drop master at once. Never take master while the greeter's
-compositor process exists: logind needs it for that compositor.
+picture and drop master at once. With "hold", keep master instead, so the
+kernel console cannot repaint, and drop it as soon as the greeter's compositor
+process appears. Never hold or take master while that process exists: logind
+needs it for that compositor.
+
+The kernel forces the console back on screen when logind returns the departing
+session's VT to text mode, even while we hold master. With "vt=N" (implies the
+caller also passes "hold"), wait for TRIGGER, put the greeter's VT N in
+graphics mode and switch to it first, so that reset happens on a hidden VT.
+
+With "switch" and "vt=N", do only that console switch: never take master or
+paint, so the departed compositor's last frame stays on screen. The rest of the
+run only logs what the display shows. Adding "nocard" skips that logging and
+never opens the graphics device, so that cannot be what keeps the frame.
 
 Disposable guest only. The picture is a solid colour so captures can identify it.
 """
 import ctypes as c
+import fcntl
 import glob
 import mmap
 import os
@@ -16,6 +29,9 @@ import sys
 import time
 
 COLOR = 0x00FF8000  # orange
+TRIGGER = "/tmp/relay-go"
+KDSETMODE, KD_TEXT, KD_GRAPHICS = 0x4B3A, 0, 1
+VT_ACTIVATE, VT_WAITACTIVE = 0x5606, 0x5607
 u8, u16, u32, u64 = c.c_uint8, c.c_uint16, c.c_uint32, c.c_uint64
 P = c.POINTER
 
@@ -145,55 +161,146 @@ def greeter_compositor(uid):
     return False
 
 
+def vt_ioctl(number, *requests):
+    fd = os.open(f"/dev/tty{number}", os.O_RDWR | os.O_NOCTTY)
+    try:
+        for request, argument in requests:
+            fcntl.ioctl(fd, request, argument)
+    finally:
+        os.close(fd)
+
+
+def switch_without_card(uid, vt, limit):
+    log("READY", "no card opened")
+    deadline = time.monotonic() + limit
+    while not os.path.exists(TRIGGER):
+        if time.monotonic() > deadline:
+            log("TIMEOUT no trigger")
+            return
+        time.sleep(.001)
+    log("TRIGGER")
+    vt_ioctl(vt, (KDSETMODE, KD_GRAPHICS), (VT_ACTIVATE, vt), (VT_WAITACTIVE, vt))
+    log("SWITCHED", f"vt={vt}")
+    deadline = time.monotonic() + limit
+    while time.monotonic() < deadline:
+        if greeter_compositor(uid):
+            log("DONE greeter compositor running")
+            return
+        time.sleep(.001)
+    log("TIMEOUT")
+    vt_ioctl(vt, (KDSETMODE, KD_TEXT))
+
+
 def main():
     uid = pwd.getpwnam(sys.argv[1] if len(sys.argv) > 1 else "plasmalogin").pw_uid
     limit = float(sys.argv[2]) if len(sys.argv) > 2 else 30
+    hold = "hold" in sys.argv[3:]
+    vt = next((int(a[3:]) for a in sys.argv[3:] if a.startswith("vt=")), 0)
+    switch = "switch" in sys.argv[3:]
+    if switch and (hold or not vt):
+        raise RuntimeError("switch needs vt=N and excludes hold")
+    if vt and os.path.lexists(TRIGGER):
+        raise RuntimeError(f"stale {TRIGGER}")
     if greeter_compositor(uid):
         raise RuntimeError("a greeter compositor is already running")
+    if "nocard" in sys.argv[3:]:
+        if not switch:
+            raise RuntimeError("nocard needs switch")
+        switch_without_card(uid, vt, limit)
+        return
     path, fd, crtc_id, connector_id = find_output()
     mode = read_crtc(fd, crtc_id).mode
-    picture = make_picture(fd, mode.hdisplay, mode.vdisplay)
+    picture = 0 if switch else make_picture(fd, mode.hdisplay, mode.vdisplay)
     connectors = (u32 * 1)(connector_id)
     log("READY", path, f"crtc={crtc_id}", f"fb={picture}",
         f"{mode.hdisplay}x{mode.vdisplay}")
     replaced = set()
     seen = None
     deadline = time.monotonic() + limit
+    held_since = None
+
+    def release():
+        nonlocal held_since
+        check(drm.drmDropMaster(fd), "drop master")
+        log("RELEASE", f"held_ms={(time.monotonic() - held_since) * 1000:.2f}")
+        held_since = None
+
+    if vt:
+        while not os.path.exists(TRIGGER):
+            if time.monotonic() > deadline:
+                log("TIMEOUT no trigger")
+                return
+            time.sleep(.001)
+        log("TRIGGER")
+        vt_ioctl(vt, (KDSETMODE, KD_GRAPHICS), (VT_ACTIVATE, vt), (VT_WAITACTIVE, vt))
+        log("SWITCHED", f"vt={vt}")
+        deadline = time.monotonic() + limit
+
+    if switch:
+        retained = set()
+        while time.monotonic() < deadline:
+            current = read_crtc(fd, crtc_id).buffer_id
+            if current != seen:
+                log("SCANOUT", f"fb={current}")
+                seen = current
+            # Checked after the read: without a greeter, this frame predates it.
+            if not greeter_compositor(uid):
+                retained.add(current)
+            elif current and current not in retained:
+                log("DONE greeter owns the output")
+                return
+            time.sleep(.001)
+        log("TIMEOUT")
+        os.close(fd)
+        if not greeter_compositor(uid):
+            vt_ioctl(vt, (KDSETMODE, KD_TEXT))
+        return
+
     while time.monotonic() < deadline:
         current = read_crtc(fd, crtc_id).buffer_id
         if current != seen:
             log("SCANOUT", f"fb={current}")
             seen = current
         # Check for the greeter immediately before any attempt to take master.
-        if current != picture:
-            if greeter_compositor(uid):
-                if replaced and current and current not in replaced:
-                    log("DONE greeter owns the output")
-                    return
-            elif drm.drmSetMaster(fd) == 0:
-                start = time.monotonic()
-                try:
-                    before = read_crtc(fd, crtc_id).buffer_id
+        if greeter_compositor(uid):
+            if held_since is not None:
+                release()
+            if replaced and current and current != picture and current not in replaced:
+                log("DONE greeter owns the output")
+                return
+        elif held_since is not None or (
+                current != picture and drm.drmSetMaster(fd) == 0):
+            if held_since is None:
+                held_since = time.monotonic()
+            try:
+                before = read_crtc(fd, crtc_id).buffer_id
+                if before != picture:
                     code = drm.drmModeSetCrtc(fd, crtc_id, picture, 0, 0,
                                               connectors, 1, c.byref(mode))
                     error = c.get_errno()
-                finally:
-                    check(drm.drmDropMaster(fd), "drop master")
-                held = (time.monotonic() - start) * 1000
-                log("PAINT" if code == 0 else f"PAINT_FAILED errno={error}",
-                    f"over={before}", f"held_ms={held:.2f}")
-                if code == 0:
-                    replaced.add(before)
+                    log("PAINT" if code == 0 else f"PAINT_FAILED errno={error}",
+                        f"over={before}")
+                    if code == 0:
+                        replaced.add(before)
+            finally:
+                if not hold:
+                    release()
         time.sleep(.001)
     log("TIMEOUT")
     # Nobody took over: put the console's buffer back if the display is free.
     if replaced and read_crtc(fd, crtc_id).buffer_id == picture \
-            and not greeter_compositor(uid) and drm.drmSetMaster(fd) == 0:
+            and not greeter_compositor(uid) \
+            and (held_since is not None or drm.drmSetMaster(fd) == 0):
+        # Holding master suppresses console repaints, so this may be the
+        # departed desktop's buffer; closing the card below is the fallback.
         console = max(replaced - {0}, default=0)
         if console:
             drm.drmModeSetCrtc(fd, crtc_id, console, 0, 0, connectors, 1, c.byref(mode))
         drm.drmDropMaster(fd)
         log("RESTORED", f"fb={console}")
+    os.close(fd)
+    if vt and not greeter_compositor(uid):
+        vt_ioctl(vt, (KDSETMODE, KD_TEXT))
 
 
 if __name__ == "__main__":

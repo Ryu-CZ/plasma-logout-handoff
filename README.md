@@ -428,6 +428,30 @@ ksmserver were active and no user units were failed. This is one successful
 quick re-login, not coverage of the earlier re-login race. Lock/unlock was
 not tested. Beeper again dumped core just before the black began.
 
+### Vandal: kept changes, home monitor, second GPU lookup found
+
+2026-11-26, after `vandal-keep-handoff.sh` ran (14:05) and a reboot.
+Acer X28 on `HDMI-A-1`, 3840x2160 at 60 Hz, internal panel disabled, so
+`video=DP-1:...` did not apply. One logout, journal only, not filmed;
+not comparable one-to-one with the `DP-1` runs.
+
+| Journal interval | This logout |
+| --- | ---: |
+| Greeter user-manager PAM opened -> first target queued | 0.078 s |
+| PLM greeter session started -> greeter Connect | 3.49 s |
+| Desktop KWin ended -> greeter Connect | 3.62 s |
+
+The generator override worked, but 2.4 s passed between the greeter
+session start and its first user unit. The greeter's shell is `nologin`,
+so `wayland-session` sources `/etc/profile`, and the leftover
+`/etc/profile.d/nvidia-rtd3-workaround.sh` runs the same `lspci` probe.
+Afterwards, with the GPU `suspended`, that script took 2.322 s (0.008 s
+once awake). The user then reported that lock and unlock worked
+perfectly. This probably explains the gap; the GPU state was not
+captured at logout. It likely also means the earlier 0.99 s and 1.05 s
+runs found the GPU already awake. The keep script does not cover this
+file, and no change to it has been made.
+
 ### Combined login and lock regression
 
 `warm-combined-1795618921` ran the patched starters with the existing

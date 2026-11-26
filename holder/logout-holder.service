@@ -1,0 +1,15 @@
+[Unit]
+Description=Keep the last desktop frame on screen until the login screen appears
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/lib/logout-holder/logout-holder
+ExecStopPost=/usr/local/lib/logout-holder/logout-holder --cleanup
+TimeoutStartSec=5
+TimeoutStopSec=5
+PrivateNetwork=yes
+ProtectHome=yes
+NoNewPrivileges=yes

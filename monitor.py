@@ -236,15 +236,34 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
         payload = base64.b64encode(sampler.encode()).decode()
         command(f'echo {payload} | base64 -d >/tmp/sample-state.py; python3 /tmp/sample-state.py &')
         wait_for(b"KMS_STATE_READY", 8)
-    if os.environ.get("LOGOUT_VM_RELAY") == "1":
+    relay = os.environ.get("LOGOUT_VM_RELAY")
+    if relay in ("1", "hold", "vt", "switch", "switch-nocard"):
+        mode = {"1": "", "hold": " 30 hold", "vt": " 30 hold vt=1",
+                "switch": " 30 switch vt=1",
+                "switch-nocard": " 30 switch vt=1 nocard"}[relay]
         payload = base64.b64encode(Path(__file__).resolve().with_name("relay.py").read_bytes()).decode()
         command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
                 f'echo {payload} | base64 -d >/tmp/relay.py && '
-                '{ python3 /tmp/relay.py "$dm" >/tmp/relay.log 2>&1 & } && '
+                f'{{ python3 /tmp/relay.py "$dm"{mode} >/tmp/relay.log 2>&1 & }} && '
                 'for i in {1..50}; do grep -q " READY " /tmp/relay.log && break; sleep .1; done; '
                 'cat /tmp/relay.log; grep -q " READY " /tmp/relay.log '
                 '&& printf "\\nRELAY_STARTED\\n"')
         wait_for(b"RELAY_STARTED", 10)
+    if relay in ("vt", "switch", "switch-nocard"):
+        # Stopping order is the reverse of After=, so ExecStop runs while the
+        # desktop shell is still on screen.
+        unit = ("[Unit]\nPartOf=plasma-plasmashell.service\n"
+                "After=plasma-plasmashell.service\n"
+                "[Service]\nType=oneshot\nRemainAfterExit=yes\n"
+                "ExecStart=/usr/bin/true\nExecStop=/usr/bin/touch /tmp/relay-go\n")
+        payload = base64.b64encode(unit.encode()).decode()
+        command('d=/home/probe/.config/systemd/user; runuser -u probe -- mkdir -p $d; '
+                f'echo {payload} | base64 -d >$d/logout-vm-relay-trigger.service && '
+                'chown probe: $d/logout-vm-relay-trigger.service && '
+                'p() { runuser -u probe -- env XDG_RUNTIME_DIR=/run/user/$u systemctl --user "$@"; }; '
+                'p daemon-reload && p start logout-vm-relay-trigger.service && '
+                'printf "\\nRELAY_TRIGGER_ARMED\\n"')
+        wait_for(b"RELAY_TRIGGER_ARMED", 10)
     # Wait for a new greeter connection, not a fixed delay after sampling.
     command('before=$(journalctl -b -u "$dm.service" --no-pager -o cat '
             '| grep -Fc "Message received from greeter: Connect"); '
@@ -308,9 +327,11 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             'journalctl -b --no-pager -o short-monotonic '
             '"_SYSTEMD_UNIT=$dm.service" + "UNIT=user@$g.service" '
             '+ SYSLOG_IDENTIFIER=plasmalogin-helper + SYSLOG_IDENTIFIER=logout-vm '
-            '+ SYSLOG_IDENTIFIER=kwin_wayland '
+            '+ SYSLOG_IDENTIFIER=kwin_wayland + SYSLOG_IDENTIFIER=plasma-login-wallpaper '
             '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service '
-            '+ USER_UNIT=logout-vm-delay.service '
+            '+ USER_UNIT=logout-vm-delay.service + USER_UNIT=plasma-wallpaper.service '
+            '+ _SYSTEMD_UNIT=logout-holder.service + UNIT=logout-holder.service '
+            '+ _SYSTEMD_UNIT=polkit.service '
             '+ "_SYSTEMD_UNIT=user@$u.service" _COMM=systemd '
             '+ "_SYSTEMD_UNIT=user@$g.service" _COMM=systemd; '
             'echo LOGOUT_VM_DONE')
@@ -323,7 +344,7 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
         command("""head -20 /tmp/kms-owners; awk '{s=$0; sub(/^[^ ]+ [^ ]+ /,"",s); if (s!=last || NR==1) print "KMS_STATE",$0; last=s} END {print "KMS_LAST",$0}' /tmp/kms-state; """
                 'printf "\\nKMS_STATE_END\\n"')
         wait_for(b"KMS_STATE_END", 10)
-    if os.environ.get("LOGOUT_VM_RELAY") == "1":
+    if relay:
         command('echo RELAY_LOG_BEGIN; cat /tmp/relay.log; printf "\\nRELAY_LOG_END\\n"')
         wait_for(b"RELAY_LOG_END", 10)
     report = (results / "serial.log").read_bytes()

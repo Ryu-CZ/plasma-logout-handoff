@@ -16,7 +16,11 @@ tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
 mkdir "$tmp/vm"
 ln -s "$login/vm/run.sh" "$tmp/vm/"
-if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_COMBINED:-} ]]; then
+if [[ -n ${LOGOUT_VM_HOLDER_BUNDLE:-} && -n ${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_RELAY:-}${LOGOUT_VM_COMBINED:-} ]]; then
+    echo 'LOGOUT_VM_HOLDER_BUNDLE replaces the marker, relay and combined options.' >&2
+    exit 1
+fi
+if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_COMBINED:-}${LOGOUT_VM_HOLDER_BUNDLE:-}${LOGOUT_VM_THEME:-} ]]; then
     # Insert guest-only configuration just before PLM starts.
     while IFS= read -r line; do
         if [[ $line == 'systemctl start plasmalogin.service' ]]; then
@@ -112,12 +116,53 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                         'printf "%s\\n" "[Service]" "Environment=KWIN_LOGIN_VM_WALLPAPER=/opt/logout-vm-backdrop/image.png" >"$d/zz-backdrop.conf"' \
                         'done'
                 fi
+                if [[ -n ${LOGOUT_VM_WALLPAPER_BIN:-} ]]; then
+                    # Greeter wallpaper program that maps only once loaded.
+                    printf "base64 -d >/tmp/logout-vm-wallpaper <<'LOGOUT_VM_BINARY'\n"
+                    base64 "$LOGOUT_VM_WALLPAPER_BIN"
+                    printf '%s\n' 'LOGOUT_VM_BINARY' \
+                        'install -D -m755 /tmp/logout-vm-wallpaper /opt/logout-vm-wallpaper/plasma-login-wallpaper' \
+                        'mkdir -p /etc/systemd/user/plasma-wallpaper.service.d' \
+                        'printf "%s\\n" "[Service]" "ExecStart=" "ExecStart=/opt/logout-vm-wallpaper/plasma-login-wallpaper" "Environment=QT_FORCE_STDERR_LOGGING=1" >/etc/systemd/user/plasma-wallpaper.service.d/90-logout-vm.conf'
+                fi
                 printf '%s\n' \
                     "LOGOUT_GREETER_COLOR=${LOGOUT_VM_GREETER_COLOR:-0}" \
                     'install -d -m755 /opt/logout-vm-kwin /etc/systemd/user/plasma-login-kwin_wayland.service.d' \
                     'install -m755 /opt/probe/kwin/{kwin_wayland,libkwin.so.6} /opt/logout-vm-kwin/' \
                     "$drop_desktop" \
                     'printf "%s\\n" "[Service]" "ExecStart=" "ExecStart=/opt/logout-vm-kwin/kwin_wayland --no-lockscreen --no-global-shortcuts --no-kactivities --inputmethod plasma-keyboard --locale1" "Environment=LD_LIBRARY_PATH=/opt/logout-vm-kwin KWIN_LOGIN_VM_MARKER=$LOGOUT_GREETER_COLOR QT_FORCE_STDERR_LOGGING=1" >/etc/systemd/user/plasma-login-kwin_wayland.service.d/90-logout-vm.conf'
+            fi
+            if [[ -n ${LOGOUT_VM_THEME:-} ]]; then
+                # The Vandal login theme as installed on the host
+                # (plasmalogin-theme/install-theme.sh): greeter and wallpaper
+                # programs, split image, user-unit overrides.
+                for name in plasma-login-greeter plasma-login-wallpaper; do
+                    printf "base64 -d >/tmp/logout-vm-theme <<'LOGOUT_VM_BINARY'\n"
+                    base64 "$LOGOUT_VM_THEME/$name"
+                    printf 'LOGOUT_VM_BINARY\ninstall -D -m755 /tmp/logout-vm-theme /usr/local/lib/plasmalogin-theme/%s\n' "$name"
+                done
+                printf "base64 -d >/tmp/logout-vm-theme <<'LOGOUT_VM_BINARY'\n"
+                base64 "$LOGOUT_VM_THEME/vandal-split.jpg"
+                printf '%s\n' 'LOGOUT_VM_BINARY' \
+                    'install -D -m644 /tmp/logout-vm-theme /var/lib/plasmalogin/wallpapers/vandal-split.jpg' \
+                    'sed -i "s|^Image=.*|Image=file:///var/lib/plasmalogin/wallpapers/vandal-split.jpg|" /etc/plasmalogin.conf' \
+                    'for p in plasma-login:plasma-login-greeter plasma-wallpaper:plasma-login-wallpaper; do' \
+                    'mkdir -p /etc/systemd/user/${p%:*}.service.d' \
+                    'printf "[Service]\\nExecStart=\\nExecStart=/usr/local/lib/plasmalogin-theme/%s\\n" ${p#*:} >/etc/systemd/user/${p%:*}.service.d/70-vandal-theme.conf' \
+                    'done' 'systemctl daemon-reload'
+            fi
+            if [[ -n ${LOGOUT_VM_HOLDER_BUNDLE:-} ]]; then
+                # The real installer from a bundle made by holder/bundle.sh.
+                printf "base64 -d >/tmp/logout-holder.tar <<'LOGOUT_VM_BINARY'\n"
+                tar -C "$LOGOUT_VM_HOLDER_BUNDLE" -cf - . | base64
+                printf '%s\n' 'LOGOUT_VM_BINARY' \
+                    'mkdir /tmp/logout-holder && tar -C /tmp/logout-holder -xf /tmp/logout-holder.tar || exit 1' \
+                    '(cd /tmp/logout-holder && sha256sum -c --quiet SHA256SUMS) || exit 1' \
+                    'bash /tmp/logout-holder/install.sh || exit 1'
+                if [[ ${LOGOUT_VM_HOLDER_STALE:-0} == 1 ]]; then
+                    # Pretend a pinned package changed: greeter-start must fall back.
+                    printf '%s\n' 'echo no-such-package-1-1 >>/usr/local/lib/logout-holder/PACKAGES'
+                fi
             fi
         fi
         printf '%s\n' "$line"

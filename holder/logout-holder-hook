@@ -1,0 +1,14 @@
+#!/bin/sh
+# Installed by logout-holder. Plasma runs this just before stopping the
+# desktop (logout, shutdown, restart). Returns once the helper has switched
+# to the login screen console, or after about 6 s; never fails the logout.
+
+# The frame kept on screen is whatever the desktop shows at the switch.
+# Hide windows still open (and let closing animations finish), so it shows
+# only the wallpaper and panel.
+if /usr/bin/timeout 1 /usr/bin/busctl --user call org.kde.KWin /KWin \
+        org.kde.KWin showDesktop b true >/dev/null 2>&1; then
+    /usr/bin/sleep 0.5
+fi
+/usr/bin/timeout 5 /usr/bin/systemctl start logout-holder.service
+exit 0
