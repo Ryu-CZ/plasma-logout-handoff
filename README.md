@@ -1,10 +1,44 @@
 # Plasma logout handoff
 
-Investigate the black interval and DisplayPort flicker when Plasma Wayland
-signs out to Plasma Login Manager on CachyOS (Plasma 6.8.3). This is separate
-from the [login](../plasma-login-handoff) and [lock](../plasma-lock-handoff)
-handoffs. See [the long-term plan](PLAN.md). No persistent changes to the
-live setup.
+Remove the black interval when Plasma Wayland signs out to Plasma Login
+Manager on CachyOS (Plasma 6.8.3); the wallpaper should stay visible. This
+is separate from the [login](../plasma-login-handoff) and
+[lock](../plasma-lock-handoff) handoffs. See [the long-term plan](PLAN.md).
+
+## Status (2026-11-26)
+
+**Goal met on Vandal.** The logout holder ([holder/](holder/README.md),
+v5) is installed. At logout, the desktop's wallpaper and panel stay on
+screen until the themed login screen appears over its own wallpaper, with
+no black in between. Keyboard sign-in works with the lid closed. Restart
+from the Plasma menu works. Shutdown from the Plasma menu has passed in
+the VM only. How it works, how to install, upgrade and undo it, and its
+limits: [holder/README.md](holder/README.md). Trials and evidence:
+[HOLDER-DESIGN.md](HOLDER-DESIGN.md).
+
+The causes of the black, in the order they were removed:
+
+1. **The console returned to text mode** when the desktop compositor
+   exited, before the login screen's compositor started. The helper keeps
+   the cards open and switches consoles in graphics mode, so the last
+   frame stays on screen.
+2. **The login screen's first frames were black** until its wallpaper
+   loaded. Patched copies of KWin and `plasma-login-wallpaper` draw the
+   wallpaper from the first frame.
+3. **The monitor re-synced** (about 2.5 s of black) because the login
+   screen's display settings (RGB range, bits per colour) differed from the
+   desktop's. The helper now copies the desktop's settings at every exit
+   from Plasma.
+
+Two regressions were found and fixed on the way:
+
+- The first KWin copy lacked Arch's backports, so keys did nothing with
+  the lid closed.
+- v3 switched consoles too early, so Restart from the Plasma menu was
+  refused. The VM now tests restart and shutdown (`LOGOUT_VM_SHUTDOWN`).
+
+The sections below are the investigation log, oldest first. They describe
+the state at the time; some refer to the earlier DisplayPort setup.
 
 ## Baseline
 
@@ -55,13 +89,15 @@ the VT switch, and 0.88 s more to the greeter connecting. The recording
 has no precise journal clock alignment, so these events don't identify
 the cause of either individual dark interval. The video is not committed.
 
-## Next checks
+## Open items
 
-1. Compare saved greeter output settings and, if needed, actual display
-   mode across a logout. Don't sync or change settings before comparing.
-2. Investigate the rapid re-login failure below in a disposable VM before
-   considering another physical experiment. Do not repeat the pre-start
-   on the host or enable lingering as a workaround.
+- Try Shutdown from the Plasma menu on Vandal; so far only the VM has
+  tested it.
+- After a KWin, Qt or Plasma Login Manager update, rebuild and reinstall the
+  bundle to get the backdrop back. Sign-in keeps working meanwhile, on the
+  stock programs.
+- Optional: replace the frozen frame with a reversed boot animation. This
+  is a wish, not required.
 
 ## Reproduce in the disposable VM
 

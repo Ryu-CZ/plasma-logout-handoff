@@ -11,5 +11,5 @@ ExecStopPost=/usr/local/lib/logout-holder/logout-holder --cleanup
 TimeoutStartSec=5
 TimeoutStopSec=5
 PrivateNetwork=yes
-ProtectHome=yes
+ProtectHome=read-only
 NoNewPrivileges=yes

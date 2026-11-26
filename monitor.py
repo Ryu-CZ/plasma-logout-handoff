@@ -269,6 +269,30 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             '| grep -Fc "Message received from greeter: Connect"); '
             '[[ $before -ge 1 ]] && echo LOGOUT_VM_BASELINE_READY')
     wait_for(b"LOGOUT_VM_BASELINE_READY", 5)
+    shutdown = os.environ.get("LOGOUT_VM_SHUTDOWN")
+    if shutdown:
+        # Restart or shut down from the desktop, as the Plasma menu does. QEMU
+        # runs with -no-reboot, so either one ends QEMU and closes the serial
+        # console. A guest still running afterwards means it was refused.
+        method = {"reboot": "logoutAndReboot", "halt": "logoutAndShutdown"}[shutdown]
+        # Follow the helper's log on the console; the guest's disk is discarded.
+        command('(journalctl -f -n0 -o cat -u logout-holder.service '
+                '| sed -u "s/^/HOLDER_LOG /") &')
+        command('logger -t logout-vm SHUTDOWN_REQUEST && '
+                'runuser -u probe -- busctl --address="unix:path=/run/user/$u/bus" '
+                f'call org.kde.Shutdown /Shutdown org.kde.Shutdown {method} && '
+                '(sleep 25; journalctl -b --no-pager -o short-monotonic '
+                '_SYSTEMD_UNIT=logout-holder.service + UNIT=logout-holder.service '
+                '+ _SYSTEMD_UNIT=polkit.service + SYSLOG_IDENTIFIER=logout-vm; '
+                'echo LOGOUT_VM_STILL_RUNNING) &')
+        try:
+            wait_for(b"LOGOUT_VM_STILL_RUNNING", 40)
+        except RuntimeError as error:
+            if str(error) != "Guest serial console closed":
+                raise
+            print(f"LOGOUT_VM_SHUTDOWN={shutdown} passed")
+            sys.exit(0)
+        raise RuntimeError(f"{shutdown} did not happen; see serial.log")
     with (results / "frames.tsv").open("w") as times, ThreadPoolExecutor(1) as worker:
         start = time.monotonic()
         def clock_anchor():
@@ -334,6 +358,10 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             '+ _SYSTEMD_UNIT=polkit.service '
             '+ "_SYSTEMD_UNIT=user@$u.service" _COMM=systemd '
             '+ "_SYSTEMD_UNIT=user@$g.service" _COMM=systemd; '
+            'o=/var/lib/plasmalogin/.config/kwinoutputconfig.json; '
+            'ls -la "$o"* 2>&1 | sed "s/^/OUTPUTS /"; '
+            'cmp "$o" "$(getent passwd probe | cut -d: -f6)/.config/kwinoutputconfig.json" '
+            '&& echo "OUTPUTS same as the desktop"; '
             'echo LOGOUT_VM_DONE')
     wait_for(b"LOGOUT_VM_DONE", 20)
     if os.environ.get("LOGOUT_VM_KMS_TRACE") == "1":

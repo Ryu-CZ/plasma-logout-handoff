@@ -49,6 +49,17 @@ if [[ $action == --restore ]]; then
         fi
     done <"$manifest"
     rm -- "$manifest"
+    # The helper (or sync-greeter-outputs.sh) copies the desktop's display
+    # settings to the login screen at logout; put back what it had before.
+    outputs=/var/lib/plasmalogin/.config/kwinoutputconfig.json
+    rm -f -- "$outputs.logout-holder-new"
+    if [[ -f $outputs.before-logout-holder ]]; then
+        mv -f -- "$outputs.before-logout-holder" "$outputs"
+        echo "Restored the login screen's previous display settings."
+    elif [[ -f $outputs.none-before-logout-holder ]]; then
+        rm -f -- "$outputs" "$outputs.none-before-logout-holder"
+        echo "Removed the login screen's display settings (it had none before)."
+    fi
     for d in "${dirs[@]}"; do rmdir -- "$d" 2>/dev/null || true; done
     systemctl daemon-reload
     (( kept == 0 )) || die 'Some files were left in place; see above.'

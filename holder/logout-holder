@@ -2,15 +2,30 @@
 """Keep the departing desktop's last frame on screen until the login screen appears.
 
 Started as logout-holder.service by Plasma's shutdown-script hook, just before
-the desktop stops (logout, and for now also shutdown and restart).
+the desktop stops. Plasma runs that hook for logout, shutdown and restart
+alike, without saying which.
 
 1. Opens each graphics card that drives a screen, without taking control
    (DRM master). While any process has the card open, the kernel does not put
    the text console back when the desktop's compositor closes it, so the
-   compositor's last frame stays on screen.
-2. Puts the login screen's console (VT) in graphics mode and switches to it,
+   compositor's last frame stays on screen. Then lets the hook return.
+2. Waits for plasma-shutdown to finish. For a logout it exits right after
+   asking systemd to stop the desktop; for shutdown or restart it first asks
+   logind, which checks that the asking session is still in front. So switch
+   console only after plasma-shutdown has exited with no shutdown or restart
+   under way; otherwise leave everything as it is (the stock behaviour).
+3. Puts the login screen's console (VT) in graphics mode and switches to it,
    so the departing console's return to text mode happens out of sight.
-3. Exits shortly after the login screen's compositor has the card open.
+4. (Right after step 1, for logout, shutdown and restart alike.) Copies the
+   departing user's display settings (kwinoutputconfig.json) to the login
+   screen, which reads them when its compositor starts: a moment later, or
+   at the next boot. With different settings (e.g. RGB range, bit depth) it
+   would change the mode and the monitor would re-sync, showing black; the
+   same applies when the desktop takes over from the login screen. Read as that user,
+   checked to be KWin's format, written atomically; the first copy keeps the
+   login screen's own file as .before-logout-holder (install.sh --restore
+   puts it back).
+5. Exits shortly after the login screen's compositor has the card open.
 
 With --cleanup (ExecStopPost): if no login screen compositor is running and
 its console is in front, put that console back in text mode, as without this
@@ -18,16 +33,21 @@ helper. The service is stopped at shutdown, so it cannot delay one.
 """
 import fcntl
 import glob
+import json
 import os
 import pwd
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
 
 GREETER_USER = "plasmalogin"
 GREETER_VT = 1
+GREETER_OUTPUTS = "/var/lib/plasmalogin/.config/kwinoutputconfig.json"
+OUTPUTS_LIMIT = 1 << 20  # bytes; the file is about 16 KiB
+DECIDE = 10.0  # seconds to wait for plasma-shutdown to exit
 LIMIT = 15.0   # seconds to wait for the login screen compositor
 LINGER = 2.0   # seconds to keep the card open after it appears
 KDSETMODE, KD_TEXT, KD_GRAPHICS = 0x4B3A, 0, 1
@@ -99,6 +119,19 @@ def greeter_compositors(uid):
     return list(processes(uid, "kwin_wayland"))
 
 
+def shutting_down():
+    """True once a shutdown or restart has been accepted (or is pending)."""
+    state = subprocess.run(["/usr/bin/systemctl", "is-system-running"],
+                           capture_output=True, text=True).stdout.strip()
+    if state == "stopping":
+        return True
+    reply = subprocess.run(
+        ["/usr/bin/busctl", "get-property", "org.freedesktop.login1",
+         "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+         "PreparingForShutdown"], capture_output=True, text=True).stdout.strip()
+    return reply == "b true"
+
+
 def set_vt_mode(mode):
     fd = os.open(f"/dev/tty{GREETER_VT}", os.O_RDWR | os.O_NOCTTY | os.O_CLOEXEC)
     try:
@@ -128,6 +161,69 @@ def open_cards():
             pass  # Not master, as expected while the desktop owns the card.
         cards.append((name, fd))
     return cards
+
+
+def read_as(uid, path):
+    """Contents of path as uid can read it, so a link cannot reach other files."""
+    user = pwd.getpwuid(uid)
+    result = subprocess.run(
+        ["/usr/bin/head", "-c", str(OUTPUTS_LIMIT + 1), "--", path],
+        user=uid, group=user.pw_gid, extra_groups=[], capture_output=True, timeout=2)
+    if result.returncode != 0:
+        raise OSError(result.stderr.decode(errors="replace").strip() or "cannot read")
+    if len(result.stdout) > OUTPUTS_LIMIT:
+        raise OSError("larger than expected")
+    return result.stdout
+
+
+def sync_outputs(uid, greeter_uid):
+    try:
+        source = os.path.join(pwd.getpwuid(uid).pw_dir, ".config", "kwinoutputconfig.json")
+        data = read_as(uid, source)
+        parsed = json.loads(data)
+        # KWin's format: [{"name": "outputs", "data": [...]}, {"name": "setups", ...}]
+        if not (isinstance(parsed, list)
+                and all(isinstance(part, dict) and isinstance(part.get("data"), list)
+                        for part in parsed)
+                and any(part.get("name") == "outputs" for part in parsed)):
+            raise ValueError("not KWin's output settings")
+        directory = os.path.dirname(GREETER_OUTPUTS)
+        if not os.path.isdir(directory):
+            raise OSError(f"no {directory}")
+        try:
+            fd = os.open(GREETER_OUTPUTS, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            with os.fdopen(fd, "rb") as f:
+                if f.read(OUTPUTS_LIMIT + 1) == data:
+                    log("display settings: login screen already has the desktop's")
+                    return
+        except FileNotFoundError:
+            pass
+        greeter_gid = pwd.getpwuid(greeter_uid).pw_gid
+        temporary = GREETER_OUTPUTS + ".logout-holder-new"
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            os.fchown(f.fileno(), greeter_uid, greeter_gid)
+            os.fchmod(f.fileno(), 0o644)
+            f.flush()
+            os.fsync(f.fileno())
+        # Keep the login screen's own settings once, as sync-greeter-outputs.sh does.
+        backup = GREETER_OUTPUTS + ".before-logout-holder"
+        none = GREETER_OUTPUTS + ".none-before-logout-holder"
+        if not os.path.lexists(backup) and not os.path.lexists(none):
+            try:
+                if stat.S_ISREG(os.lstat(GREETER_OUTPUTS).st_mode):
+                    os.link(GREETER_OUTPUTS, backup)
+            except FileNotFoundError:
+                os.close(os.open(none, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644))
+        os.rename(temporary, GREETER_OUTPUTS)
+        log("display settings: copied the desktop's to the login screen")
+    except Exception as error:  # Never let this stop the hand-over.
+        log(f"display settings: not copied ({error})")
 
 
 def cleanup(greeter_uid):
@@ -162,6 +258,28 @@ def main():
         log("refused: no card drives a screen")
         return
     log("holding", " ".join(name for name, _ in cards), f"from vt={vt}")
+    notify("READY=1")  # The hook returns; plasma-shutdown carries on.
+    # Logout, restart and shutdown alike: the next login screen (now, or at
+    # the next boot) reads these settings when its compositor starts.
+    sync_outputs(uid, greeter_uid)
+
+    deadline = time.monotonic() + DECIDE
+    while any(processes(uid, "plasma-shutdown")):
+        if time.monotonic() > deadline:
+            log(f"plasma-shutdown still running after {DECIDE:.0f} s: not switching")
+            return
+        time.sleep(.005)
+    if shutting_down():
+        log("shutdown or restart: not switching")
+        return
+    if foreground_vt() != vt:
+        log(f"vt={vt} no longer in front: not switching")
+        return
+    if greeter_compositors(greeter_uid):
+        log("a login screen compositor is already running: not switching")
+        return
+    desktop = any(has_card_open(pid) for pid in processes(uid, "kwin_wayland"))
+    log("logout; desktop compositor", "still has the card" if desktop else "already gone")
     set_vt_mode(KD_GRAPHICS)
     fd = os.open(f"/dev/tty{GREETER_VT}", os.O_RDWR | os.O_NOCTTY | os.O_CLOEXEC)
     try:
@@ -177,7 +295,6 @@ def main():
             return
         time.sleep(.005)
     log(f"switched to vt={GREETER_VT}")
-    notify("READY=1")
 
     deadline = time.monotonic() + LIMIT
     while time.monotonic() < deadline:

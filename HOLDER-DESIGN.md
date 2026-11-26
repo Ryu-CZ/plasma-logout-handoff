@@ -376,17 +376,65 @@ greeter changes, sign-in passed. The first `s-*` attempt failed in setup:
 with no theme drop-in, an unmatched glob under `set -o pipefail` aborted the
 installer; fixed with `nullglob`.
 
-### Shutdown and reboot must not start the holder
+### Shutdown and restart must not switch the console
 
-Not tested; from source. The prototype trigger fires whenever
-`plasma-plasmashell.service` stops, so it would also fire on shutdown and
-reboot. In plasma-workspace 6.8.3,
-`startkde/plasma-shutdown/shutdown.cpp`, `logoutComplete()` queues
-`StopUnit graphical-session.target` and only then asks logind to power off
-or reboot, so logind's shutting-down state may not be set yet when the
-trigger runs. Proposed: `plasma-shutdown` starts the holder itself, before
-`StopUnit`, only for `ShutdownTypeLogout`; cancelled logouts never reach
-that point. Not implemented.
+Plasma runs the shutdown-script hook for logout, shutdown and restart alike,
+with no hint of which (`runShutdownScripts()` in
+`startkde/plasma-shutdown/shutdown.cpp`, plasma-workspace 6.8.3). Only after
+the hook returns does `logoutComplete()` stop `graphical-session.target` and
+then either quit (logout) or call logind `Reboot()`/`PowerOff()`.
+
+v1 to v3 switched to the login screen console inside the hook. On Vandal
+(2026-11-26 17:14, v3 installed) Restart from the Plasma menu then failed:
+the desktop session was no longer in front, so polkit treated
+`org.freedesktop.login1.reboot` as `allow_inactive` (`auth_admin_keep`), the
+password dialog had no screen, and polkit logged "Operator of unix-session:18
+FAILED to authenticate". The desktop stopped, no login screen started (the
+session never ended), the helper gave up after 15 s and the console went back
+to text. Shutdown fails the same way. VM run `v3-reboot-*` with the new
+`LOGOUT_VM_SHUTDOWN=reboot` mode of `monitor.py` reproduced it: holder switched,
+guest still running 25 s later.
+
+v4: the helper opens the cards and lets the hook return at once, then waits
+(up to 10 s) for plasma-shutdown to exit. It switches only if plasma-shutdown
+has exited, no shutdown is under way (`systemctl is-system-running` is not
+`stopping`, logind `PreparingForShutdown` is false), the desktop's VT is still
+in front and no login screen compositor runs. A restart or shutdown therefore
+never sees the switch; it behaves as without the holder (the screen may go
+black before the boot splash shows, which is acceptable). It logs whether the
+desktop's KWin still had the card at the switch, which would show if the later
+switch ever comes too late.
+
+VM, v4 bundles (`v4-batch.Qq8mgE`): restart and power-off from the desktop
+(stock, and restart with the theme) all went through; logout stock and themed:
+desktop → wallpaper → login screen with no black, re-login 2/2, switch 11-13 ms
+after arming with the desktop KWin still holding the card.
+Vandal, v4 installed (2026-11-26): logout at 17:32:41 switched 35 ms after
+arming, desktop KWin still had the card, backdrop painted, keyboard sign-in
+worked; Restart from the Plasma menu at 17:33:07 armed, did not switch, and
+the machine restarted normally (no polkit refusal).
+
+### Display settings copied at every Plasma exit (v5)
+
+Manual `sync-greeter-outputs.sh` had to be re-run after each display change.
+v5's helper copies the departing user's `~/.config/kwinoutputconfig.json` to
+`/var/lib/plasmalogin/.config/` right after arming, for logout, restart and
+shutdown alike, so the login screen gets the desktop's settings now or at the
+next boot (the latter also avoids a modeset when the desktop takes over at
+login). The file is read as the user (`head` run with that uid, no extra
+groups), must be KWin's format (a list of `{"name", "data": [...]}` with an
+`outputs` part; a first attempt expected an object and was caught in the VM,
+copy skipped harmlessly), at most 1 MiB, and is written as a new file then
+renamed (owner plasmalogin, 644). The login screen's own file is kept once
+by hard link as `.before-logout-holder` (or a `.none-before-logout-holder`
+marker), the names the manual script uses; `install.sh --restore` puts it
+back. The unit now has `ProtectHome=read-only`. A restart that bypasses
+Plasma (`systemctl reboot`, crash) leaves the previous copy in place.
+
+VM, v5 (`v5b-batch.ArRYxo`, `v5c-batch.NIe0Wb`): logout stock and themed,
+settings copied in 5-23 ms after arming, file identical to the desktop's,
+owner/mode correct, backup made, re-login 3/3, no logout black; restart and
+power-off: copied 5 ms after arming, then went down normally.
 
 ## Candidate: keep the scanout owner, switch its producer
 

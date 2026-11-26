@@ -1,7 +1,8 @@
 #!/bin/sh
 # Installed by logout-holder. Plasma runs this just before stopping the
-# desktop (logout, shutdown, restart). Returns once the helper has switched
-# to the login screen console, or after about 6 s; never fails the logout.
+# desktop (logout, shutdown, restart). Returns once the helper holds the
+# screen, or after about 6 s; the helper switches to the login screen only
+# for a logout. Never fails the logout.
 
 # The frame kept on screen is whatever the desktop shows at the switch.
 # Hide windows still open (and let closing animations finish), so it shows
