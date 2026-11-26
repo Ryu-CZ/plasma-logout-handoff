@@ -292,6 +292,31 @@ desktop and greeter at 100 Hz and do not pre-start the manager. Measure
 the original journal landmarks and allow teardown to finish before
 signing back in, since the live starters do not have the VM fixes.
 
+### Vandal: greeter-only generator A/B
+
+The installed probe still took 2.286 s in a standalone run; the
+sysfs probe took 2 ms and emitted the identical Mesa EGL assignment.
+The [one-logout trial](vandal-greeter-generator-trial.sh) used a
+greeter-only runtime override; it delegated other UIDs to the
+installed probe. No display setting was changed.
+
+| Journal interval | Recent stock logout | Override logout |
+| --- | ---: | ---: |
+| Greeter user-manager PAM opened → first target queued | 2.348 s | 0.058 s |
+| Desktop KWin ended → PLM greeter Connect | 3.237 s | 0.987 s |
+
+The greeter returned and a new Plasma Wayland session started on
+re-login. The armed timer removed the override and staging file
+without restarting PLM; both paths were verified absent. Local
+artifacts are under `~/.cache/plasma-logout-handoff/vandal-generator.XyZwIj/`.
+
+This one comparison supports the cold PCI probe as a main contributor
+to greeter startup delay. GPU runtime state was not captured
+immediately before both logouts, so it is not a controlled cold-state
+repeat. Connect does not measure display presentation; this run was
+not filmed and did not test immediate re-login or lock/unlock.
+Prefer a fix to the CachyOS generator over keeping the trial override.
+
 ### Combined login and lock regression
 
 `warm-combined-1795618921` ran the patched starters with the existing

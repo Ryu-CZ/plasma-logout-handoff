@@ -108,11 +108,12 @@ proposing installation.
    mode switching alone does not explain it.
 4. **Validate on the real display only after isolated passes.** Keep the
    two experiments separate:
-   - **CachyOS / PLM (deferred):** If resumed, test at 100 Hz with the
-     temporary greeter-only sysfs generator override and automatic
-     removal. Measure cold manager
-     startup and greeter return; neither a shorter delay nor a greeter
-     wallpaper proves the intermediate modeset is gone.
+   - **CachyOS / PLM:** The one-logout [generator trial](README.md#vandal-greeter-only-generator-ab)
+     reduced KWin exit → greeter Connect from 3.24 s to 0.99 s.
+     Re-login and automatic removal passed. Keep the override removed;
+     pursue the equivalent sysfs check in the CachyOS generator
+     upstream, separately from any attempt to remove display blanking.
+     The trial did not measure first visible presentation.
    - **Manjaro / SDDM:** Keep stock Xsetup and X11. The wallpaper
      trial was rolled back. The journal puts roughly 1.55 s before
      Xsetup and does not support a session ordering change. Both clips
