@@ -6,6 +6,107 @@ owns DRM master. The physical fd-only A/B did not preserve the CRTC
 through the Xorg takeover. That rules out the passive fd holder in
 this configuration, not every possible driver-side handoff.
 
+## Design decision: image relay to remove the black (2026-11-26)
+
+**Status:** accepted for a VM prototype at the user's request. Not
+installed or validated on any physical machine. It is an attempt to
+remove the logout black completely and may fail.
+
+**Context.** On Vandal, console mode matching plus the greeter generator
+override reduced filmed black from about 5.5 s to 1.6 s (one run each).
+What remains is rendered or console content during desktop teardown,
+compositor change and greeter startup.
+
+**Decision.** Keep a trusted picture on scanout across the whole handoff
+by relaying it, with three cooperating stages:
+
+1. *Departing desktop:* its compositor keeps painting the wallpaper while
+   the Plasma shell stops.
+2. *Gap:* a small privileged relay prepares a framebuffer before logout.
+   When the output has no DRM master and shows something else, it takes
+   master, shows the picture and drops master immediately. Scanout keeps
+   the picture without an owner. It repeats if the console restores
+   itself.
+3. *Incoming greeter:* its compositor paints the same picture from its
+   first frame until the greeter UI is ready.
+
+**Safety rules.** The relay never takes master while the greeter's
+compositor process exists, because logind fails device activation if
+another process is master. It has a deadline and restores the console
+buffer if nothing takes over. It changes no authentication, seat or
+session ownership. Stage 3 must not be able to block graphical login.
+
+**Not chosen.**
+
+- A resident compositor hosting both sessions: a seat and session
+  redesign, kept only as a last resort.
+- Painting the console once: it appeared in the guest but did not last
+  until the greeter (`preload-1795644288`). Earlier advice here not to
+  repaint a VT stands for the console buffer; the relay differs by
+  showing its own buffer.
+- Passive device handle (loki) and a compositor parked on another VT
+  (guest): neither kept the output.
+
+**Order and gates.** Stage 2 first, in the VM, because it is the
+unproven part: the picture must replace the console interval and
+password re-login must still work, over repeated runs. Then stage 3 and
+stage 1 in the VM, then all three together including a stalled greeter
+and lock/unlock. Physical installation needs separate approval, an armed
+rollback and a recovery path. Emulated captures say nothing about i915
+timing or the monitor.
+
+### Relay VM results: gap stage alone
+
+Cold PLM logouts with password re-login, `relay-batch.ic3YRW` (interleaved).
+Counts are captures in the first dark stretch, roughly 40 ms or more
+apart, with an orange test picture. They are samples, not frame times.
+
+| Condition | Black | Partly dark | Relay picture | Re-login |
+| --- | --- | --- | --- | --- |
+| Stock, 3 runs | 15, 17, 17 | 2, 0, 0 | none | 3/3 |
+| Relay, 3 runs | 7, 7, 8 | 1, 2, 2 | 6, 6, 6 | 3/3 |
+| Relay + greeter VT preset to graphics, 3 runs | 7, 7, 6 | 0, 1, 1 | 7, 6, 7 | 3/3 |
+
+One further stock/relay pair (`relay-ab-*-1795691939`) agreed. In its
+relay run the framebuffer listing showed desktop KWin → relay → fbcon →
+relay → fbcon → relay → greeter KWin. The relay painted two or three
+times per logout, holding master for 1-40 ms; the console was still
+visible for short periods before a repaint. Black remains before the
+first paint (departing KWin) and after the greeter KWin takes the output.
+The VT preset had no clear benefit and was removed. Nine batch logouts
+cannot rule out the master race, and a greeter that never presents,
+lock/unlock and i915 behaviour are untested.
+
+### Relay VM results: all three stages together
+
+The compositor backdrop is
+[`patches/kwin-6.8.3-logout-vm-backdrop.patch`](patches/kwin-6.8.3-logout-vm-backdrop.patch),
+applied to KWin 6.8.3 (it includes the login project's marker and startup
+wallpaper changes). It paints an image whenever no desktop window exists.
+Build `kwin_wayland` and `kwin_wayland_wrapper`, then run with
+`LOGOUT_VM_RELAY=1 LOGOUT_VM_BACKDROP=1 LOGOUT_VM_GREETER_MARKER=<build>`.
+The relay picture is orange and the backdrop cyan, to attribute captures.
+
+| Condition (`backdrop-smoke-*`, `backdrop-batch.qw5Vgp`) | Black | Partial | Re-login |
+| --- | --- | --- | --- |
+| Stock (batch above) | 15, 17, 17 | 2, 0, 0 | 3/3 |
+| Backdrop only, 2 runs | 10, 10 | 0, 0 | 2/2 |
+| Relay + backdrop, 4 runs | 3, 2, 2, 1 | 0, 1, 2, 2 | 4/4 |
+
+Some "partial" captures in the summariser are orange/cyan splits with no
+black; others are part black. Remaining full-black captures seen:
+
+1. Departing desktop, as the Plasma shell stops, before the first relay
+   paint. The backdrop did not cover it; cause not traced.
+2. A console repaint before the relay replaced it.
+3. Greeter UI already drawing (keyboard hint visible) on black, before
+   its wallpaper. Hypothesis: a desktop-type greeter window hides the
+   backdrop or itself paints black.
+
+Not done: those three, a stalled greeter, relay timeout, lock/unlock, a
+real wallpaper, and anything on physical hardware. The backdrop condition
+also needs review for direct scanout before any desktop use.
+
 ## Candidate: keep the scanout owner, switch its producer
 
 Use a single compositor/KMS owner as a VM research prototype. While

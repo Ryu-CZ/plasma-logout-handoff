@@ -49,6 +49,96 @@ A persistent compositor that **remains active** is untested, not disproven.
 The [detailed captures](HOLDER-DESIGN.md) distinguish VM pixels from
 physical signal state. Do not infer DP link retraining from either.
 
+## Active design: image relay (VM prototype)
+
+**Decision, 2026-11-26:** attempt to remove the black completely with a
+three-stage picture relay, gap stage first, VM only. See the
+[design decision](HOLDER-DESIGN.md#design-decision-image-relay-to-remove-the-black-2026-11-26).
+Prototype: `relay.py`, enabled with `LOGOUT_VM_RELAY=1`.
+VM result: 1-3 black captures with relay and compositor backdrop, against
+15-17 stock ([details](HOLDER-DESIGN.md#relay-vm-results-all-three-stages-together)).
+Not yet black-free; nothing installed. This supersedes
+the earlier advice below to defer a handoff owner; the two Vandal fixes
+are a separate matter.
+
+## Candidate for Vandal: console mode matching (one filmed logout)
+
+**Confirmed live, 2026-11-26, no logout:** `bash vt-mode-probe.sh` saw
+DP-1 at 100 Hz (1188000) on the desktop, 60 Hz on tty3, and 100 Hz after
+returning. The console also lit the lid-closed eDP-1 at 1920x1200.
+
+**Source reading** (upstream kernel v7.3.6, systemd v262; distro patches
+not checked): logind's VT restore sets `KD_TEXT`; fbcon then force-restores
+the console configuration even while a compositor holds DRM master
+(`drm_fb_helper_set_par`). That is consistent with the 60 Hz switch while
+KWin was still stopping; the trigger at that instant was not traced.
+`video=DP-1:3840x2160@100` marks the first probed 100 Hz match, which for
+this EDID is CTA VIC 117 (1188 MHz), ahead of DisplayID's 906 MHz timing.
+
+**State, 2026-11-26:** the boot started at 11:36 has the parameter in
+`/proc/cmdline`; the desktop on tty2 reads 3840x2160@100, clock 1188000,
+lid closed. Console probe (step 2): DP-1 stayed at clock 1188000 on tty3
+and after return; eDP-1 still lit at 1920x1200. A rerun gave the same
+modes; the added 1 s delay stopped the stray newlines in Alacritty. Blink
+inconclusive: the mostly black console hides a short blackout. After the
+white fill on tty3, only a top-left rectangle was white and the rest black,
+likely because the console is 240x75 cells (1920x1200 with an 8x16 font),
+sized to the lit eDP-1. During the probe the rectangle appeared immediately,
+with **no full-screen black transition** (by eye, not filmed); step 3
+skipped. A console image would cover only that area as things stand.
+**Step 4 done:** the [filmed logout](README.md#vandal-console-mode-matching-filmed-logout)
+held 1188000 and shows no apparent backlight-off phase, but about 4 s of
+black remains, mostly before the greeter compositor starts. User's view:
+pure dark, no blurred picture; this does not establish whether the
+backlight was on. Parameter not persisted by us;
+rollback is still pending (reboot without editing).
+
+**Combined run done:** with the greeter generator override too, the
+[filmed logout](README.md#vandal-mode-matching-plus-greeter-generator-override-filmed)
+showed about 1.6 s of black and sign-in worked. No further filmed run is
+planned. The override has expired; the boot parameter lasts until reboot.
+
+**Decision, 2026-11-26:** the user reports lock/unlock still works and
+asked to keep both. `vandal-keep-handoff.sh` makes them permanent (Limine
+drop-in plus greeter-only `/etc` generator override; `--restore` undoes
+both). Staged and syntax-checked, **not yet run**. After running it:
+reboot, check `/proc/cmdline`, log out and sign in immediately, then lock
+and unlock. Immediate re-login remains untested. The parameter applies to
+any display on DP-1.
+
+1. One boot only: in Limine, edit the entry and append the parameter. Use
+   the built-in or USB keyboard; Bluetooth does not work there.
+2. Check `/proc/cmdline`, then `bash vt-mode-probe.sh`. Expect 1188000 on
+   the console. Watch whether the monitor blinks.
+3. If it still blinks, suspect enabling the eDP-1 pipe (hypothesis):
+   `echo off | sudo tee /sys/class/drm/card1-eDP-1/status`, repeat, then
+   restore with `echo detect | sudo tee` on the same file.
+4. Then sample a normal logout:
+   `sudo systemd-run --unit=dp-sample --collect /usr/bin/bash "$PWD/sample-dp.sh"`
+   and afterwards `journalctl -b -u dp-sample`.
+5. Pass: only the 1188000 clock throughout, and no backlight-off phase on
+   film. Equal clocks alone do not prove i915 skipped a full modeset.
+6. Rollback: reboot without editing. If persisted, the parameter also
+   affects early boot, and any other display that appears as DP-1.
+
+A search of the local pi session logs on 2026-11-26 found no `video=`
+trial. The constant-60 Hz run recorded "one kind of black" but not
+whether the backlight stayed on, so a blackout may survive matching.
+
+Follow-up from the [login project](../plasma-login-handoff): paint the
+wallpaper in the greeter KWin's first frames
+(`physical/kwin-6.8.3-on-lock-handoff.patch`). The magenta marker
+suggests this covers only the tail of the gap. The startup wallpaper
+itself is untested in a greeter: check in the VM that it works with
+`--no-lockscreen`, and install it where `plasmalogin` can read it.
+Console painting and the greeter marker were tested separately, not
+together.
+
+This cannot remove rendered black. The separate greeter-only generator
+trial shortened KWin exit → greeter Connect from 3.24 s to 0.99 s (one
+run); test the two changes one at a time. Immediate re-login is untested
+with either.
+
 ## Earlier cross-platform investigation (historical, not the current loki checklist)
 
 - CachyOS: Plasma Wayland → Plasma Login Manager (Wayland greeter).

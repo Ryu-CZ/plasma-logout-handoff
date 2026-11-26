@@ -357,6 +357,77 @@ The script now passes
 files verified the correction. Keep the originals for now; only the
 fast probe with Mesa EGL preserved showed a shorter connection time.
 
+### Vandal: console mode matching, filmed logout
+
+One boot with `video=DP-1:3840x2160@100`, lid closed, 2026-11-26. The
+greeter generator override was not part of this run.
+`video_2026-11-26_11-57-30.mp4` shows live `/proc/uptime`; video zero is
+near boot time 1216.45 s (about 0.2 s uncertainty). The video is not
+committed. Local artifacts: `~/.cache/plasma-logout-handoff/vandal-modematch.y2QmY5/`.
+
+The sampler logged DP-1 enabled and pipe B active at 100 Hz (1188000)
+for the desktop VT, greeter VT (1228.62) and new session VT (1236.59).
+It recorded no other mode or connector state.
+
+| Clip time | Boot time (approx.) | Observation |
+| ---: | ---: | --- |
+| 9.19 s | 1225.64 | Wallpaper goes black as the Plasma shell stops; cursor still visible |
+| | 1225.99 | Desktop KWin service stopped |
+| 9.3–9.5 s | 1225.8–1225.9 | Image brightens to a blurred pattern, which then holds |
+| | 1228.53 | Greeter user manager started (2.44 s startup); jump to VT 1 |
+| 13.0 s | 1229.45 | Cursor visible on black; greeter Connect at 1229.46 |
+| 13.2 s | 1229.65 | Greeter wallpaper visible |
+
+About **4 s of black remains** (desktop KWin end → Connect: 3.48 s). The
+blurred pattern is also present when the earliest black frame is
+brightened, so it is read as the camera's exposure rising on a black
+screen (likely reflections), not as displayed content. The user then
+reported that it was pure dark, agreeing with this reading.
+
+Brightness compared with the stock clip of 2026-11-25
+(`video_2026-11-25_15-20-25.mp4`, mean frame luma):
+
+- Stock: about 32 (13.9–15.8 s) → 63 (15.8–17.5 s) → 30 (17.5–19.4 s),
+  with sharp steps, matching the two kinds of black seen then.
+- Matched: 26 for about 0.15 s, a rise over about 0.2 s, then a steady
+  66–67 until the greeter, apart from one gradual dip to about 59.
+
+No backlight-off phase is apparent in the matched run. Framing and
+exposure differ between the clips and each condition has one run, so this
+does not measure backlight state or link training. The new desktop session
+started on tty7; gettys held tty2–6. Beeper dumped core during logout,
+before the black began.
+
+### Vandal: mode matching plus greeter generator override, filmed
+
+Same boot, 2026-11-26, with the one-logout greeter-only generator
+override added. `video_2026-11-26_12-07-08.mp4` (not committed); no
+sampler or on-screen clock. Video zero is placed near boot time 1782.9 s
+by matching dismissal of the logout prompt to its journal exit, so boot
+times are approximate. Local artifacts: `~/.cache/plasma-logout-handoff/vandal-combined.6ad2c2rf/`.
+
+| Clip time | Event |
+| ---: | --- |
+| 18.70 s | Wallpaper goes black (Plasma shell stopped 1801.61) |
+| | Desktop KWin ended 1801.92; greeter user manager started in 65 ms |
+| | Greeter Connect 1802.97 |
+| 20.30 s | Greeter wallpaper visible |
+| ~31 s | Desktop wallpaper after sign-in |
+
+| Measure, one run each | Stock film (11-25) | Mode matched | Both changes |
+| --- | ---: | ---: | ---: |
+| Black on film | about 5.5 s | about 4.0 s | **about 1.6 s** |
+| Desktop KWin end → greeter Connect | not compared | 3.48 s | 1.05 s |
+
+The dark interval holds one level after the camera settles, with no
+apparent backlight-off phase; reflections of the room are visible in it.
+The mode was not sampled in this run. The override and staging file were
+verified absent afterwards. Sign-in at 1810.63 (about 8.7 s after desktop
+KWin ended) reused the desktop user manager; KWin, the Plasma shell and
+ksmserver were active and no user units were failed. This is one successful
+quick re-login, not coverage of the earlier re-login race. Lock/unlock was
+not tested. Beeper again dumped core just before the black began.
+
 ### Combined login and lock regression
 
 `warm-combined-1795618921` ran the patched starters with the existing

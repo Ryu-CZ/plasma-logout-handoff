@@ -99,11 +99,24 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     'chmod 755 /opt/logout-vm-kwin/greeter' \
                     'printf "%s\n" "[Wayland]" "CompositorCommand=/opt/logout-vm-kwin/greeter" >/etc/sddm.conf.d/zzz-logout-vm-marker.conf'
             elif [[ -n ${LOGOUT_VM_GREETER_MARKER:-} ]]; then
+                # With a backdrop build, the desktop compositor keeps it too.
+                drop_desktop='rm -f /home/probe/.config/systemd/user/plasma-kwin_wayland.service.d/marker.conf'
+                if [[ ${LOGOUT_VM_BACKDROP:-0} == 1 ]]; then
+                    drop_desktop=:
+                    # A solid cyan image, so captures can attribute it.
+                    printf '%s\n' 'install -d -m755 /opt/logout-vm-backdrop' \
+                        "echo $(magick -size 1280x800 'xc:#00ffff' png:- | base64 -w0) | base64 -d >/opt/logout-vm-backdrop/image.png" \
+                        'chmod 644 /opt/logout-vm-backdrop/image.png' \
+                        'for u in plasma-login-kwin_wayland /home/probe/.config/systemd/user/plasma-kwin_wayland; do' \
+                        'case $u in /*) d=$u.service.d ;; *) d=/etc/systemd/user/$u.service.d ;; esac; mkdir -p "$d"' \
+                        'printf "%s\\n" "[Service]" "Environment=KWIN_LOGIN_VM_WALLPAPER=/opt/logout-vm-backdrop/image.png" >"$d/zz-backdrop.conf"' \
+                        'done'
+                fi
                 printf '%s\n' \
                     "LOGOUT_GREETER_COLOR=${LOGOUT_VM_GREETER_COLOR:-0}" \
                     'install -d -m755 /opt/logout-vm-kwin /etc/systemd/user/plasma-login-kwin_wayland.service.d' \
                     'install -m755 /opt/probe/kwin/{kwin_wayland,libkwin.so.6} /opt/logout-vm-kwin/' \
-                    'rm -f /home/probe/.config/systemd/user/plasma-kwin_wayland.service.d/marker.conf' \
+                    "$drop_desktop" \
                     'printf "%s\\n" "[Service]" "ExecStart=" "ExecStart=/opt/logout-vm-kwin/kwin_wayland --no-lockscreen --no-global-shortcuts --no-kactivities --inputmethod plasma-keyboard --locale1" "Environment=LD_LIBRARY_PATH=/opt/logout-vm-kwin KWIN_LOGIN_VM_MARKER=$LOGOUT_GREETER_COLOR QT_FORCE_STDERR_LOGGING=1" >/etc/systemd/user/plasma-login-kwin_wayland.service.d/90-logout-vm.conf'
             fi
         fi

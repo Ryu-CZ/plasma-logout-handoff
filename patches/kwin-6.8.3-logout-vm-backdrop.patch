@@ -1,0 +1,194 @@
+diff --git a/src/backends/drm/drm_commit.cpp b/src/backends/drm/drm_commit.cpp
+index f3df10a..c30252b 100644
+--- a/src/backends/drm/drm_commit.cpp
++++ b/src/backends/drm/drm_commit.cpp
+@@ -18,6 +18,7 @@
+ 
+ #include <QCoreApplication>
+ #include <QThread>
++#include <atomic>
+ #include <mutex>
+ #include <set>
+ 
+@@ -218,6 +219,12 @@ std::expected<void, OutputError> DrmAtomicCommit::doCommit(uint32_t flags)
+     if (!success) {
+         return errnoToError();
+     }
++    if (!(flags & DRM_MODE_ATOMIC_TEST_ONLY) && qEnvironmentVariableIsSet("KWIN_LOGIN_VM_MARKER")) {
++        static std::atomic_bool first = true;
++        if (first.exchange(false)) {
++            qWarning("LOGIN_VM_FIRST_ATOMIC_COMMIT flags=%u", flags);
++        }
++    }
+     return {};
+ }
+ 
+@@ -355,6 +362,9 @@ bool DrmLegacyCommit::doModeset(DrmConnector *connector, DrmConnectorMode *mode)
+ {
+     uint32_t connectorId = connector->id();
+     if (drmModeSetCrtc(gpu()->fd(), m_crtc->id(), m_buffer->framebufferId(), 0, 0, &connectorId, 1, mode->nativeMode()) == 0) {
++        if (qEnvironmentVariableIsSet("KWIN_LOGIN_VM_MARKER")) {
++            qWarning("LOGIN_VM_LEGACY_MODESET crtc=%u fb=%u", m_crtc->id(), m_buffer->framebufferId());
++        }
+         m_crtc->setCurrent(m_buffer);
+         return true;
+     } else {
+diff --git a/src/scene/itemrenderer_opengl.cpp b/src/scene/itemrenderer_opengl.cpp
+index a2fc64f..7f648a8 100644
+--- a/src/scene/itemrenderer_opengl.cpp
++++ b/src/scene/itemrenderer_opengl.cpp
+@@ -358,11 +358,14 @@ bool ItemRendererOpenGL::createRenderNode(Item *item, RenderContext *context, co
+ void ItemRendererOpenGL::renderBackground(const RenderTarget &renderTarget, const RenderViewport &viewport, const Region &deviceRegion)
+ {
+     const auto clipped = deviceRegion & renderTarget.transformedRect();
++    // Disposable VM marker, set only for the incoming user compositor.
++    static const bool marker = qEnvironmentVariableIntValue("KWIN_LOGIN_VM_MARKER") == 1;
++    const float color = marker ? 1.0f : 0.0f;
+     if (clipped == renderTarget.transformedRect()) {
+-        glClearColor(0, 0, 0, 0);
++        glClearColor(color, 0, color, color);
+         glClear(GL_COLOR_BUFFER_BIT);
+     } else if (!clipped.isEmpty()) {
+-        glClearColor(0, 0, 0, 0);
++        glClearColor(color, 0, color, color);
+         glEnable(GL_SCISSOR_TEST);
+ 
+         const auto targetSize = renderTarget.size();
+diff --git a/src/scene/workspacescene.cpp b/src/scene/workspacescene.cpp
+index 868edeb..0147706 100644
+--- a/src/scene/workspacescene.cpp
++++ b/src/scene/workspacescene.cpp
+@@ -69,6 +69,7 @@
+ #include "scene/backgroundeffectitem.h"
+ #include "scene/decorationitem.h"
+ #include "scene/dndiconitem.h"
++#include "scene/imageitem.h"
+ #include "scene/itemrenderer.h"
+ #include "scene/rootitem.h"
+ #include "scene/surfaceitem.h"
+@@ -81,7 +82,10 @@
+ 
+ #include <KGlobalAccel>
+ #include <KLocalizedString>
++#include <KScreenLocker/KsldApp>
+ #include <QAction>
++#include <QImageReader>
++#include <QTimer>
+ #include <QtMath>
+ 
+ namespace KWin
+@@ -96,6 +100,20 @@ WorkspaceScene::WorkspaceScene()
+     , m_overlayItem(std::make_unique<RootItem>(this))
+     , m_cursorItem(std::make_unique<CursorItem>(m_overlayItem.get()))
+ {
++    const auto startupPath = qEnvironmentVariable("KWIN_LOGIN_VM_WALLPAPER");
++    // VM prototype: a backdrop shown only while no desktop window covers it, so
++    // it spans compositor startup and the end of a session without a signal.
++    if (!startupPath.isEmpty()) {
++        QImageReader reader(startupPath);
++        const QSize size = reader.size();
++        if (size.isValid() && size.width() <= 4096 && size.height() <= 4096) {
++            const auto image = reader.read();
++            if (!image.isNull()) {
++                m_startupWallpaper = std::make_unique<ImageItem>();
++                m_startupWallpaper->setImage(image);
++            }
++        }
++    }
+     setGeometry(workspace()->geometry());
+     connect(workspace(), &Workspace::geometryChanged, this, [this]() {
+         setGeometry(workspace()->geometry());
+@@ -137,6 +155,9 @@ void WorkspaceScene::detachRenderer(RenderDevice *device)
+     releaseResources(device, m_containerItem.get());
+     releaseResources(device, m_overlayItem.get());
+     releaseResources(device, m_cursorItem.get());
++    if (m_startupWallpaper) {
++        releaseResources(device, m_startupWallpaper.get());
++    }
+ 
+     m_renderers.erase(device);
+ }
+@@ -412,7 +433,7 @@ QList<Item *> WorkspaceScene::layerCandidates(ssize_t maxTotalCount) const
+     // as the highest priority item for an overlay, since its responsiveness
+     // is especially noticeable to users.
+ 
+-    if (effects->blocksDirectScanout()) {
++    if (backdropNeeded() || effects->blocksDirectScanout()) {
+         return {containerItem()};
+     }
+ 
+@@ -732,12 +753,41 @@ bool WorkspaceScene::finalPaintScreen(const RenderTarget &renderTarget, const Re
+     }
+ }
+ 
++bool WorkspaceScene::backdropNeeded() const
++{
++    if (!m_startupWallpaper) {
++        return false;
++    }
++    const auto windows = workspace()->windows();
++    return std::ranges::none_of(windows, [](const Window *window) {
++        return window->isDesktop() && !window->isDeleted();
++    });
++}
++
++bool WorkspaceScene::paintStartupWallpaper(const RenderTarget &target, const RenderViewport &viewport, const Region &region)
++{
++    if (!backdropNeeded() || region.isEmpty() || waylandServer()->isScreenLocked()) {
++        return true;
++    }
++    const auto rect = viewport.renderRect();
++    const auto source = m_startupWallpaper->image().size();
++    const double scale = std::max(rect.width() / source.width(), rect.height() / source.height());
++    const QSizeF size = QSizeF(source) * scale;
++    m_startupWallpaper->setSize(size);
++    m_startupWallpaper->setPosition(rect.center() - QPointF(size.width(), size.height()) / 2);
++    return m_renderers[painted_delegate->renderDevice()]->renderItem(target, viewport, m_startupWallpaper.get(),
++                                                                     0, region & viewport.deviceRect(), WindowPaintData{}, {}, {});
++}
++
+ // The generic painting code that can handle even transformations.
+ // It simply paints bottom-to-top.
+ bool WorkspaceScene::paintGenericScreen(const RenderTarget &renderTarget, const RenderViewport &viewport, int, LogicalOutput *screen)
+ {
+     auto &renderer = m_renderers[painted_delegate->renderDevice()];
+     renderer->renderBackground(renderTarget, viewport, Region::infinite());
++    if (!paintStartupWallpaper(renderTarget, viewport, viewport.deviceRect())) {
++        return false;
++    }
+ 
+     for (const Phase2Data &paintData : std::as_const(m_paintContext.phase2Data)) {
+         if (!paintWindow(renderTarget, viewport, paintData.item, paintData.mask, paintData.deviceRegion)) {
+@@ -779,6 +829,9 @@ bool WorkspaceScene::paintSimpleScreen(const RenderTarget &renderTarget, const R
+     }
+ 
+     renderer->renderBackground(renderTarget, viewport, visible);
++    if (!paintStartupWallpaper(renderTarget, viewport, visible)) {
++        return false;
++    }
+ 
+     for (const Phase2Data &paintData : std::as_const(m_paintContext.phase2Data)) {
+         if (!paintWindow(renderTarget, viewport, paintData.item, paintData.mask, paintData.deviceRegion)) {
+diff --git a/src/scene/workspacescene.h b/src/scene/workspacescene.h
+index 21d56df..346c4cd 100644
+--- a/src/scene/workspacescene.h
++++ b/src/scene/workspacescene.h
+@@ -18,6 +18,7 @@ namespace KWin
+ class DragAndDropIconItem;
+ class EffectWindow;
+ class EglContext;
++class ImageItem;
+ class Item;
+ class WindowItem;
+ class WindowPaintData;
+@@ -116,7 +117,10 @@ private:
+     void createDndIconItem();
+     void destroyDndIconItem();
+     void updateCursor();
++    bool backdropNeeded() const;
++    bool paintStartupWallpaper(const RenderTarget &target, const RenderViewport &viewport, const Region &region);
+ 
++    std::unique_ptr<ImageItem> m_startupWallpaper;
+     PaintContext m_paintContext;
+     std::unique_ptr<Item> m_containerItem;
+     std::unique_ptr<Item> m_overlayItem;

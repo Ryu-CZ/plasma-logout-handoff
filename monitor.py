@@ -236,6 +236,15 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
         payload = base64.b64encode(sampler.encode()).decode()
         command(f'echo {payload} | base64 -d >/tmp/sample-state.py; python3 /tmp/sample-state.py &')
         wait_for(b"KMS_STATE_READY", 8)
+    if os.environ.get("LOGOUT_VM_RELAY") == "1":
+        payload = base64.b64encode(Path(__file__).resolve().with_name("relay.py").read_bytes()).decode()
+        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
+                f'echo {payload} | base64 -d >/tmp/relay.py && '
+                '{ python3 /tmp/relay.py "$dm" >/tmp/relay.log 2>&1 & } && '
+                'for i in {1..50}; do grep -q " READY " /tmp/relay.log && break; sleep .1; done; '
+                'cat /tmp/relay.log; grep -q " READY " /tmp/relay.log '
+                '&& printf "\\nRELAY_STARTED\\n"')
+        wait_for(b"RELAY_STARTED", 10)
     # Wait for a new greeter connection, not a fixed delay after sampling.
     command('before=$(journalctl -b -u "$dm.service" --no-pager -o cat '
             '| grep -Fc "Message received from greeter: Connect"); '
@@ -314,6 +323,9 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
         command("""head -20 /tmp/kms-owners; awk '{s=$0; sub(/^[^ ]+ [^ ]+ /,"",s); if (s!=last || NR==1) print "KMS_STATE",$0; last=s} END {print "KMS_LAST",$0}' /tmp/kms-state; """
                 'printf "\\nKMS_STATE_END\\n"')
         wait_for(b"KMS_STATE_END", 10)
+    if os.environ.get("LOGOUT_VM_RELAY") == "1":
+        command('echo RELAY_LOG_BEGIN; cat /tmp/relay.log; printf "\\nRELAY_LOG_END\\n"')
+        wait_for(b"RELAY_LOG_END", 10)
     report = (results / "serial.log").read_bytes()
     if not attempted or b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
         raise RuntimeError("Did not reach a new desktop after logout; see serial.log")
