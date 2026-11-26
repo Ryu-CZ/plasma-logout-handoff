@@ -349,8 +349,10 @@ No video measured presentation. Local artifacts:
 
 The original rollback timer fired but did not restore the files:
 systemd expanded the inline shell's parameter expressions before
-passing them to Bash. Both backups survived. Use the trial script's
-`--restore` path to restore directly. The script now passes
+passing them to Bash. Both backups survived. Manual `--restore` in
+a local terminal restored both original files with their expected
+ownership and modes; both backup directories were verified absent.
+The script now passes
 `--expand-environment=no`; a transient timer test against temporary
 files verified the correction. Keep the originals for now; only the
 fast probe with Mesa EGL preserved showed a shorter connection time.
