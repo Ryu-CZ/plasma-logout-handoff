@@ -11,8 +11,8 @@ is separate from the [login](../plasma-login-handoff) and
 v5) is installed. At logout, the desktop's wallpaper and panel stay on
 screen until the themed login screen appears over its own wallpaper, with
 no black in between. Keyboard sign-in works with the lid closed. Restart
-from the Plasma menu works. Shutdown from the Plasma menu has passed in
-the VM only. How it works, how to install, upgrade and undo it, and its
+from the Plasma menu works. Shutdown from the Plasma menu works
+(Vandal, 2026-11-26 22:56). How it works, how to install, upgrade and undo it, and its
 limits: [holder/README.md](holder/README.md). Trials and evidence:
 [HOLDER-DESIGN.md](HOLDER-DESIGN.md).
 
@@ -96,8 +96,6 @@ the cause of either individual dark interval. The video is not committed.
   traced in the journal and the VM; user drop-in installed and passed one
   logout. See
   [the log entry](#vandal-failed-re-login-after-logout-2026-11-26-2101).
-- Try Shutdown from the Plasma menu on Vandal; so far only the VM has
-  tested it.
 - After a KWin, Qt or Plasma Login Manager update, rebuild and reinstall the
   bundle to get the backdrop back. Sign-in keeps working meanwhile, on the
   stock programs.
@@ -982,3 +980,20 @@ matches the known `/etc/profile.d/nvidia-rtd3-workaround.sh` `lspci` delay
 with the GPU suspended (see "Cold user-manager delay"); the file is still
 installed. The holder kept the picture meanwhile (backdrop first paint
 22:14:18.58).
+
+Later observations (2026-11-26/27, drop-in and holder v5 installed):
+
+- Shut Down from the Plasma menu at 22:56:49: the helper armed and copied
+  the display settings, did not switch consoles, `graphical-session.target`
+  stopped normally, and the PC powered off. First live check of Shutdown;
+  before this only the VM had tested it.
+- Crashes during logout get no DrKonqi notification. The core dump is
+  kept (`coredumpctl`), and at the next sign-ins (22:15:22, 09:49:01) a
+  pickup handed each stored Beeper dump to the launcher. But Beeper has no
+  KCrash metadata ("Unable to find file for pid …"), and the 6.8.3 launcher
+  does not notify for pickups, so nothing was shown. Since 11-26 21:00 the
+  processor logged 18 refused reports ("Connection refused"); 17 of them
+  predate the drop-in (installed 22:13), since the stock socket also refuses
+  reports that arrive after it closes. Whether a KCrash-enabled app's crash
+  at logout is shown at the next sign-in is untested. Details:
+  `drkonqi-report/README.md` (branch `drkonqi-report`).
