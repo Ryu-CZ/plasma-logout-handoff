@@ -5,6 +5,146 @@ Manager on CachyOS (Plasma 6.8.3); the wallpaper should stay visible. This
 is separate from the [login](../plasma-login-handoff) and
 [lock](../plasma-lock-handoff) handoffs. See [the long-term plan](PLAN.md).
 
+## How it works
+
+The "logout holder" (v7, installed in `/usr/local/lib/logout-holder`) keeps the
+desktop's last frame on screen until the login screen's compositor takes the
+graphics card. The login screen then draws its own wallpaper from its first
+frame.
+
+## Where it fits
+
+Four projects each own one handoff of the screen. The goal is that the
+screen never shows black between them.
+
+```mermaid
+flowchart LR
+    A["Desktop session"] -- "log out" --> B["Login screen<br/>(greeter)"]
+    B -- "sign in" --> C["Session start<br/>(splash → desktop)"]
+    C --> A
+    A -- "lock (Meta+L)" --> D["Lock screen"]
+    D -- "unlock" --> A
+
+    classDef lock fill:#dbeafe,stroke:#2563eb
+    classDef login fill:#dcfce7,stroke:#16a34a
+    classDef logout fill:#fef3c7,stroke:#d97706
+    class D lock
+    class C login
+    class B logout
+```
+
+| Handoff | Project |
+|---|---|
+| Desktop ⇄ lock screen (blue) | plasma-lock-handoff |
+| Sign-in → desktop (green) | plasma-login-handoff |
+| Logout → login screen (amber) | **plasma-logout-handoff** (this repo) |
+| Building and installing all patches, rollback | plasma-handoff-maintenance |
+
+## The pieces
+
+```mermaid
+flowchart TD
+    subgraph desk["Departing desktop"]
+        PS["Plasma logout program<br/>(plasma-shutdown)"]
+        HOOK["Shutdown hook<br/>logout-holder-hook"]
+        DKWIN["Desktop KWin"]
+    end
+    HOLD["Holder service (root)<br/>logout-holder.service"]
+    CARD["Graphics card<br/>shows the last frame"]
+    subgraph greet["Login screen"]
+        START["greeter-start<br/>copy or stock program?"]
+        GKWIN["Greeter KWin (patched copy)<br/>wallpaper underneath,<br/>no scale-in animation"]
+        WALL["Wallpaper program (patched copy)<br/>transparent until loaded"]
+    end
+
+    PS -- "runs" --> HOOK
+    HOOK -- "show desktop" --> DKWIN
+    HOOK -- "start" --> HOLD
+    DKWIN -- "last frame" --> CARD
+    HOLD -- "keeps card open" --> CARD
+    HOLD -- "display settings" --> GKWIN
+    HOLD -- "switch to VT 1" --> GKWIN
+    START --> GKWIN
+    START --> WALL
+    WALL -- "drawn above the backdrop" --> GKWIN
+    GKWIN -- "first frame" --> CARD
+```
+
+- **The holder never controls the card.** It only keeps it open, so the console
+  does not return to text mode and wipe the picture.
+- **The frame shows no open windows.** The hook first asks KWin to show the
+  desktop and waits 0.5 s.
+- **Same display settings, no monitor re-sync.** The holder copies the desktop's
+  `kwinoutputconfig.json` to the login screen.
+- **No scale-in.** The login screen's KWin gets `scaleEnabled=false`, so the
+  login screen does not dim and grow in over its wallpaper.
+- **Only a logout switches screens.** For restart or shutdown the settings are
+  still copied, but the holder does not switch consoles.
+- **Package updates fall back.** If a listed package changed, or a patched copy
+  cannot load, `greeter-start` runs the stock program (no backdrop, sign-in
+  still works).
+- Separately, `login-screen-start` brings the login screen back after a failed
+  sign-in.
+
+## Timeline
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Plasma logout
+    participant H as Holder
+    participant D as Desktop KWin
+    participant G as Greeter KWin
+
+    P->>D: hook: show desktop, wait 0.5 s
+    P->>H: hook: start logout-holder.service
+    H->>H: open the card that drives a screen
+    Note right of H: journal: "holding card1 from vt=2"
+    H-->>P: ready, logout carries on
+    H->>G: copy display settings
+    Note right of H: journal: "display settings: ..."
+    P->>D: stop the desktop
+    P-->>H: logout program exits
+    H->>G: switch to VT 1 in graphics mode
+    Note right of H: journal: "switched to vt=1"
+    Note over H,G: last desktop frame stays on screen
+    G->>G: starts and opens the card
+    Note right of H: journal: "login screen compositor has the card"
+    G->>G: draw login wallpaper underneath
+    Note right of G: journal: "logout-holder backdrop: first paint"
+    H->>H: exit 2 s after the greeter has the card
+```
+
+Card and console numbers (`card1`, `vt=2`) are those of this PC. The desktop
+KWin may stop before or after the switch.
+
+## Checking a live login
+
+After logging out and signing in again:
+
+```bash
+journalctl -b -o short-precise | grep logout-holder
+```
+
+Expect, for one logout: `holding card1 from vt=2`, a `display settings:` line,
+`switched to vt=1`, `login screen compositor has the card`, and the login
+screen KWin's `logout-holder backdrop: first paint`.
+
+| Line | Meaning |
+|---|---|
+| `refused: ...` | the holder did nothing; the reason follows |
+| `shutdown or restart: not switching` | expected for restart and shutdown |
+| `no login screen compositor after 15 s` | the login screen did not take over |
+| `changed since install: ...` or `does not load` | stock program used; rebuild the bundle |
+
+## More detail
+
+- [holder/README.md](holder/README.md): behavior, install, upgrade, undo, limits
+- [HOLDER-DESIGN.md](HOLDER-DESIGN.md): design, trials and evidence
+- [PLAN.md](PLAN.md): long-term plan
+- `patches/`: [login screen backdrop](patches/kwin-6.8.3-logout-vm-backdrop.patch) and
+  [wallpaper program](patches/plasma-login-manager-6.8.3-logout-vm-wallpaper.patch)
+
 ## Status (2026-11-27)
 
 **Goal met on Vandal.** The logout holder ([holder/](holder/README.md),
