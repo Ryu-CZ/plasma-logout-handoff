@@ -1,190 +1,170 @@
 # Logout holder
 
-Keeps a picture on screen from Log Out until the login screen appears,
-instead of black: the desktop's wallpaper stays up, then the login screen
-appears over its own wallpaper. Restart and shutdown are left as they were.
-Design, VM and host evidence: [HOLDER-DESIGN.md](../HOLDER-DESIGN.md).
-
-Status (2026-11-27): v6 was installed on Vandal (Intel, HDMI 4K@60, lid closed)
-on 2026-11-27 12:35. With v5, logout showed no black, keyboard sign-in worked,
-and Restart and Shutdown from the Plasma menu worked (Shutdown 2026-11-26
-22:56); v6 differs only in the installer and the login-screen wrapper, and has
-been through normal logouts and sign-ins on Vandal.
-v7 (the animation setting and the new package guard,
-[VM results](../README.md#holder-v7-animation-setting-and-package-guard-vm))
-replaced it at 16:56 the same day. The first logout and sign-in with v7 worked,
-with a smooth logout; Restart and Shutdown have not been tried there with v7.
+The holder keeps the desktop's wallpaper on screen from Log Out until the login
+screen appears over its own wallpaper. Restart and shutdown look as they did
+before. Design: [HOLDER-DESIGN.md](../HOLDER-DESIGN.md). Status:
+[README.md](../README.md#status-2026-11-27).
 
 ## What happens
 
-When Plasma ends the session (logout, restart or shutdown):
+At logout, restart or shutdown:
 
-1. Plasma's logout program runs `/etc/xdg/plasma-workspace/shutdown/logout-holder`
-   just before it stops the desktop. The hook hides the remaining windows
-   (KWin "show desktop", then 0.5 s for animations), starts
-   `logout-holder.service` (a polkit rule allows only `start` of that unit)
-   and returns once the helper holds the screen (at most about 6.5 s).
-2. The helper keeps each graphics card that drives a screen open, without
-   controlling it, so the desktop's last frame stays on screen when its
-   compositor exits.
-3. It copies the departing user's display settings
-   (`~/.config/kwinoutputconfig.json`) to the login screen
-   (`/var/lib/plasmalogin/.config/`). See "Display settings" below.
-4. It waits for Plasma's logout program to exit. Only if that program has
-   exited and no restart or shutdown is under way (a plain logout) does it
-   switch to the login screen's console (VT 1) in graphics mode. Plasma
-   gives the hook no other way to tell a logout from a restart. Switching
-   earlier would make logind refuse a restart or shutdown, because the
-   desktop would no longer be the session in front. v3 did that.
-5. The login screen's compositor (a patched copy of KWin 6.8.3) draws the
-   login wallpaper underneath from its first frame. The wallpaper window
-   (a patched copy of `plasma-login-wallpaper`) stays transparent until its
-   picture has loaded.
-   The login screen compositor also runs without KWin's window-open
-   animation (v7): over the backdrop, the login screen would visibly dim and
-   scale in from the centre. The setting is
-   `/usr/local/lib/logout-holder/xdg/kwinrc`, seen by that compositor only.
-6. The helper exits 2 s after that compositor has the card. If none starts
-   within 15 s, or the service is stopped, the console returns to text mode,
-   as without the helper.
+1. Plasma runs `/etc/xdg/plasma-workspace/shutdown/logout-holder` before it
+   stops the desktop. The hook hides windows (KWin "show desktop", 0.5 s) and
+   starts `logout-holder.service`. It returns once the helper holds the screen,
+   after at most about 6.5 s.
+2. The helper opens each card that drives a screen, without taking control.
+3. It copies `~/.config/kwinoutputconfig.json` to
+   `/var/lib/plasmalogin/.config/`.
+4. It waits for Plasma's logout program to exit. On a plain logout it switches
+   to VT 1 in graphics mode. On restart or shutdown it does nothing more.
+5. The greeter's patched KWin draws the login wallpaper from its first frame,
+   with no window-open animation.
+6. The helper exits 2 s after that KWin has the card. If none appears within
+   15 s, or the service is stopped, the console returns to text mode.
+
+## Build
+
+You need:
+
+- the KWin 6.8.3 build with the distro backports
+  (`../patches/kwin-6.8.3-arch-backport-{528824,528936}.patch`, as in Arch
+  `kwin 6.8.3-3`) plus `../patches/kwin-6.8.3-logout-vm-backdrop.patch`, in
+  `~/.cache/plasma-logout-handoff/backdrop/build` or `KWIN_BUILD`;
+- `plasma-login-wallpaper` built with
+  `../patches/plasma-login-manager-6.8.3-logout-vm-wallpaper.patch`.
+
+The backports are required. Without the fix for KDE bug 528936, the login
+prompt went to the closed built-in screen and the keyboard did nothing.
+
+```bash
+bash bundle.sh NEW_DIR PATCHED_PLASMA_LOGIN_WALLPAPER
+```
+
+This creates `NEW_DIR` with the helper, hook, unit, polkit rule,
+`greeter-start`, `login-screen-start`, both copies, `PACKAGES` and
+`SHA256SUMS`. `BUNDLE_PACKAGES` overrides the derived package list.
+
+## Install
+
+```bash
+sudo bash NEW_DIR/install.sh
+```
+
+It takes effect at the next logout. The installer changes nothing if:
+
+- a target file already exists, or a bundle file is missing;
+- KWin or the login manager is not 6.8.3;
+- a package in `PACKAGES` is not installed, or a copy does not load;
+- the greeter KWin has local overrides (the unchanged
+  `greeter-animation-test.sh` files are accepted and then removed);
+- the stock greeter or wallpaper command is unexpected, or
+  `/etc/plasmalogin.conf` names no wallpaper image;
+- the running login manager does not search `/usr/local/bin` before
+  `/usr/bin`, or sets `PLASMALOGIN_GREETER_EXEC`.
+
+## Upgrade
+
+Remove the old version with its own bundle, then install the new one:
+
+```bash
+sudo bash OLD_DIR/install.sh --restore && sudo bash NEW_DIR/install.sh
+```
+
+To return from v7 to v6, swap the directories. The scale-in then returns unless
+you run `sudo bash ../greeter-animation-test.sh apply`.
+
+## Undo
+
+```bash
+sudo bash NEW_DIR/install.sh --restore
+```
+
+This removes the installed files and restores the login screen's display
+settings. A file changed since install is left in place, with a message.
+
+**If the login screen does not appear:** Ctrl+Alt+F3, sign in, run the restore
+command, then `sudo systemctl restart plasmalogin`.
 
 ## Display settings
 
-If the login screen's display settings differ from the desktop's (colour
-range, bits per colour), its first frame forces a full modeset and the
-monitor shows black for a few seconds while it re-syncs. On Vandal the
-desktop uses Broadcast RGB Limited and 8 bits per colour; the login
-screen's defaults differ.
+Different colour range or bit depth on the greeter forces a modeset, and the
+monitor shows black for a few seconds. Step 3 prevents that. It runs at every
+logout, restart and shutdown from Plasma. The greeter reads the copy at once or
+at the next boot. It also spares a modeset when the desktop takes over at
+sign-in.
 
-So step 3 runs at every logout, restart and shutdown from Plasma. The login
-screen uses the copied settings right away, or at the next boot. Matching
-settings also spare a modeset when the desktop takes over at sign-in. How
-the copy is made:
-
-- The file is read as the departing user, so a link cannot point the helper
-  at a file that user could not read.
-- It must be in KWin's format and at most 1 MiB.
-- It is written as a new file, owned by plasmalogin, then renamed into place.
-- The first copy keeps the login screen's own file as
-  `.before-logout-holder`, and `install.sh --restore` puts it back.
-
-After a restart that bypassed Plasma (`systemctl reboot`, Ctrl+Alt+Del, a
-crash), the login screen keeps the previous copy until the next exit from
-Plasma. To copy by hand: `sudo bash sync-greeter-outputs.sh` (`--restore`
-undoes it).
+- The first copy keeps the greeter's own file as `.before-logout-holder`.
+- `systemctl reboot`, Ctrl+Alt+Del or a crash leave the previous copy in place
+  until the next exit from Plasma.
+- To copy by hand: `sudo bash sync-greeter-outputs.sh` (`--restore` undoes it).
 
 ## Login screen after a failed sign-in
 
-Installed on Vandal with v6 (2026-11-27 12:35); the greeter starts through it.
-Recovery tested in the VM only (no failed sign-in on Vandal since).
+If the desktop fails to start, the login manager starts a new greeter while the
+old KWin may still be stopping. systemd refuses, and the screen stays black
+until a reboot. The bundle installs [login-screen-start](login-screen-start) as
+`/usr/local/bin/startplasma-login-wayland`. It waits for the pending stop, then
+runs the packaged program.
 
-If the desktop fails to start at sign-in, the login manager starts a new login
-screen at once. The old one's compositor may still be stopping, systemd
-refuses the new start, and the screen stays black until a reboot. The bundle
-installs [login-screen-start](login-screen-start) as
-`/usr/local/bin/startplasma-login-wayland`. The login manager finds it ahead of
-the packaged program, it waits for the pending stop, then it runs the packaged
-program. Evidence: [the main README](../README.md#greeter-recovery-after-a-failed-sign-in-vm).
-
-- It is a shell script that uses only `systemctl`, so it is not tied to
-  `PACKAGES` and stays in use after package updates.
-- It takes effect at the next login screen; no restart or reboot is needed.
-- The installer refuses if the running login manager would not find it.
-- It stops any login screen units still running before starting new ones, which
-  assumes one seat.
-- If the stop fails or takes 100 s, it logs that (`journalctl -t logout-holder`)
-  and starts the packaged program anyway.
-- It does not stop the desktop start from failing; it only gets the login screen
-  back so that you can sign in again. The new login screen shows no error.
+- Tested in the VM only. Installed since v6
+  ([results](../docs/LOG.md#greeter-recovery-after-a-failed-sign-in-vm-11-2627-88f7b46)).
+- Shell script using only `systemctl`: it stays in use after package updates.
+- Takes effect at the next login screen. No restart needed.
+- It stops running greeter units first, which assumes one seat.
+- After 100 s, or if the stop fails, it logs that
+  (`journalctl -t logout-holder`) and starts the packaged program anyway.
+- It does not stop the desktop start from failing. The new greeter shows no
+  error.
 
 ## When the copies are not used
 
-`greeter-start` starts the stock program instead of a copy, and logs why
-(`journalctl -b -g logout-holder`), in either case:
+`greeter-start` runs the stock program and logs why
+(`journalctl -b -g logout-holder`) if:
 
-- A package in `PACKAGES` is no longer installed at that version. The list
-  holds the packages whose private code the copies depend on. `bundle.sh`
-  asks the dynamic loader which libraries supply private symbols to the copies
-  (on Vandal `qt6-base`, `qt6-declarative`, `kdecoration`, `kwindowsystem`)
-  and adds `kwin`, whose plugins load into the copy, `qt6-wayland`, a plugin
-  loaded at run time, and `plasma-login-manager`.
-- The copy does not load: `ldd -r` reports a library not found or a symbol
-  missing, whichever package caused it. This costs about 0.05 s for KWin and
-  0.03 s for the wallpaper program (measured on Vandal).
+- a package in `PACKAGES` is no longer installed at that version: `kwin`
+  (plugins load into the copy), `qt6-wayland` (loaded at run time),
+  `plasma-login-manager`, and the packages supplying private symbols (on the
+  test PC `qt6-base`, `qt6-declarative`, `kdecoration`, `kwindowsystem`);
+- or `ldd -r` reports a missing library or symbol (0.05 s for KWin, 0.03 s for
+  the wallpaper program).
 
-Either way the backdrop is gone until a rebuilt bundle is installed, and
-sign-in works. A copy that loads but fails while running is not detected.
-`kwindowsystem` is a KDE Frameworks package, so expect this after each
-Frameworks release.
+The backdrop is then gone until you install a rebuilt bundle. Sign-in works.
+Expect this after each KDE Frameworks release (`kwindowsystem`). A copy that
+loads and then fails is not detected.
 
-## Build, install, upgrade, undo
+## Check the re-login workaround
 
-The bundle holds the helper, the hook, the unit, the polkit rule,
-`greeter-start`, `login-screen-start` and the two patched programs. `bundle.sh`
-writes `PACKAGES` (see above) and `SHA256SUMS`. The installer refuses a
-bundle whose packages are not installed or whose copies do not load:
+DrKonqi can cancel the session stop at logout and break a quick re-login. The
+fix is a user drop-in, not part of the bundle
+([report](../drkonqi-report/README.md)). After a logout:
 
-    bash bundle.sh NEW_DIR PATCHED_PLASMA_LOGIN_WALLPAPER
-    sudo bash NEW_DIR/install.sh
+```bash
+journalctl --since -10min -o short-precise --no-pager \
+  -g 'Socket to launch DrKonqi|Launch DrKonqi|Current graphical user session|Failed to enqueue|contradicts existing jobs|destructive|startplasma-login-wayland'
+```
 
-To upgrade, remove the installed version with its own bundle, then install
-the new one:
+Good:
 
-    sudo bash OLD_DIR/install.sh --restore && sudo bash NEW_DIR/install.sh
+- `Closed Socket to launch DrKonqi for a systemd-coredump crash` at the start
+  of teardown;
+- no `Started Launch DrKonqi …` during teardown;
+- `Stopped target Current graphical user session`;
+- no `Failed to enqueue` or `destructive`.
 
-The v7 installer also accepts, and then removes, the unchanged test files of
-`../greeter-animation-test.sh`.
+## Test in the VM
 
-`install.sh --restore` removes everything it installed. If the login screen
-does not appear: Ctrl+Alt+F3, sign in, run the restore line, then
-`sudo systemctl restart plasmalogin`.
+Options are in [docs/VM.md](../docs/VM.md#logout-holder). Test restart and
+shutdown after every change.
 
-The KWin copy is built from 6.8.3 with the distribution's backports
-(`../patches/kwin-6.8.3-arch-backport-*.patch`, as in Arch kwin 6.8.3-3)
-plus `../patches/kwin-6.8.3-logout-vm-backdrop.patch`. The backports are
-required. Without the fix for KDE bug 528936, the first host trial sent the
-login prompt to the closed built-in screen and the keyboard did nothing.
+## Limits
 
-## Testing in the VM
-
-From the project directory (see [the main README](../README.md)):
-
-- `LOGOUT_VM_HOLDER_BUNDLE=DIR bash run-vm.sh BASE NEW_RESULTS cold`: one
-  logout and sign-in, with captured frames.
-- With `LOGOUT_VM_THEME=DIR` added, the Vandal login theme is injected.
-- With `LOGOUT_VM_HOLDER_STALE=1` added, a changed package is simulated.
-- With `LOGOUT_VM_HOLDER_BROKEN=library|symbol` added, the installed KWin copy
-  loses a library, or the wallpaper copy a symbol.
-- `LOGOUT_VM_GREETER_FORCE_ANIMATIONS=1` turns greeter animations on (the VM's
-  software renderer disables them); `LOGOUT_VM_GREETER_NO_SCALE=1` adds the
-  no-animation override; `LOGOUT_VM_EFFECTS_PROBE=1` logs the effects the
-  returned greeter loaded, after `LOGOUT_VM_EFFECTS_PROBE_DELAY` seconds.
-- With `LOGOUT_VM_HOLDER_UPGRADE=NEW_DIR` added, the bundle above is removed
-  and `NEW_DIR` installed from the desktop, with the login manager running.
-- With `LOGOUT_VM_HOLDER_RESTORE=1` added, the last installed bundle is removed
-  again from the desktop.
-- With `LOGOUT_VM_FAILED_RELOGIN=stuck|recover` added, the first sign-in after
-  logout is made to fail. `stuck` passes if no login screen follows; `recover`
-  passes if one does and a second sign-in reaches a desktop.
-  `LOGOUT_VM_SLOW_GREETER_STOP=SECONDS` makes the old login screen compositor
-  slow to stop, so that stock fails every time.
-- With `LOGOUT_VM_SHUTDOWN=reboot|halt` added, the run restarts or shuts
-  down from the desktop instead. It passes only if the guest actually goes
-  down.
-
-`python3 vmsum.py RESULTS...` summarises the captured frames. Its "first
-gap" also counts the black after the password (sign-in), so check by eye
-which side of the login screen it is on.
-
-## Known limits
-
-- Restart and shutdown show what they showed without the helper (the
-  screen may go black before the boot splash).
-- After an update of a package in `PACKAGES`, the backdrop is gone until a
-  rebuilt bundle is installed ([above](#when-the-copies-are-not-used)).
-- The login screen's KWin copy runs without real-time priority
-  (`cap_sys_nice`); see the comment in `install.sh`.
-- The frozen frame stays readable by the next program that controls the
-  display (the login screen compositor). The hook shows the desktop first,
-  so open windows are not in it.
-- Only one seat (`seat0`), with the login screen on console 1.
+- Restart and shutdown show what they showed before (the screen may go black
+  before the boot splash).
+- The greeter KWin copy has no real-time priority (`cap_sys_nice`): a file
+  capability would make the loader ignore `LD_LIBRARY_PATH`.
+- The kept frame is readable by the next program that controls the display. The
+  hook shows the desktop first, so open windows are not in it.
+- One seat (`seat0`), login screen on console 1.
+- Live tests: Intel graphics, HDMI 4K at 60 Hz, lid closed. Other setups are
+  not tested.
