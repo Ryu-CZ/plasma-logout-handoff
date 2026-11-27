@@ -20,7 +20,11 @@ if [[ -n ${LOGOUT_VM_HOLDER_BUNDLE:-} && -n ${LOGOUT_VM_GREETER_MARKER:-}${LOGOU
     echo 'LOGOUT_VM_HOLDER_BUNDLE replaces the marker, relay and combined options.' >&2
     exit 1
 fi
-if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_COMBINED:-}${LOGOUT_VM_HOLDER_BUNDLE:-}${LOGOUT_VM_THEME:-} ]]; then
+if [[ -n ${LOGOUT_VM_HOLDER_UPGRADE:-} && -z ${LOGOUT_VM_HOLDER_BUNDLE:-} ]]; then
+    echo 'LOGOUT_VM_HOLDER_UPGRADE upgrades from LOGOUT_VM_HOLDER_BUNDLE.' >&2
+    exit 1
+fi
+if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_MARKER:-}${LOGOUT_VM_COMBINED:-}${LOGOUT_VM_HOLDER_BUNDLE:-}${LOGOUT_VM_THEME:-}${LOGOUT_VM_GREETER_FIX:-}${LOGOUT_VM_SLOW_GREETER_STOP:-} ]]; then
     # Insert guest-only configuration just before PLM starts.
     while IFS= read -r line; do
         if [[ $line == 'systemctl start plasmalogin.service' ]]; then
@@ -78,6 +82,13 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     base64 "$LOGOUT_VM_STOP_FIX/$name"
                     printf 'LOGOUT_VM_BINARY\ninstall -m 755 /tmp/logout-vm-starter /usr/bin/%s\n' "$name"
                 done
+            fi
+            if [[ -n ${LOGOUT_VM_GREETER_FIX:-} ]]; then
+                # Only the login screen starter, replacing the packaged one.
+                printf "base64 -d >/tmp/logout-vm-starter <<'LOGOUT_VM_BINARY'\n"
+                base64 "$LOGOUT_VM_GREETER_FIX"
+                printf '%s\n' 'LOGOUT_VM_BINARY' \
+                    'install -m 755 /tmp/logout-vm-starter /usr/bin/startplasma-login-wayland'
             fi
             if [[ -n ${LOGOUT_VM_COMBINED:-} ]]; then
                 printf "install -d -m755 /opt/logout-vm-combined\nbase64 -d <<'LOGOUT_VM_COMBINED_PAYLOAD' | tar -xzf - -C /opt/logout-vm-combined\n"
@@ -159,10 +170,26 @@ if [[ $LOGOUT_VM_MODE == sddm || -n ${LOGOUT_VM_STOP_FIX:-}${LOGOUT_VM_GREETER_M
                     'mkdir /tmp/logout-holder && tar -C /tmp/logout-holder -xf /tmp/logout-holder.tar || exit 1' \
                     '(cd /tmp/logout-holder && sha256sum -c --quiet SHA256SUMS) || exit 1' \
                     'bash /tmp/logout-holder/install.sh || exit 1'
+                if [[ -n ${LOGOUT_VM_HOLDER_UPGRADE:-} ]]; then
+                    # Unpacked only; the driver installs it from the desktop.
+                    printf "base64 -d >/tmp/logout-holder-new.tar <<'LOGOUT_VM_BINARY'\n"
+                    tar -C "$LOGOUT_VM_HOLDER_UPGRADE" -cf - . | base64
+                    printf '%s\n' 'LOGOUT_VM_BINARY' \
+                        'mkdir /tmp/logout-holder-new && tar -C /tmp/logout-holder-new -xf /tmp/logout-holder-new.tar || exit 1' \
+                        '(cd /tmp/logout-holder-new && sha256sum -c --quiet SHA256SUMS) || exit 1'
+                fi
                 if [[ ${LOGOUT_VM_HOLDER_STALE:-0} == 1 ]]; then
                     # Pretend a pinned package changed: greeter-start must fall back.
                     printf '%s\n' 'echo no-such-package-1-1 >>/usr/local/lib/logout-holder/PACKAGES'
                 fi
+            fi
+            if [[ -n ${LOGOUT_VM_SLOW_GREETER_STOP:-} ]]; then
+                # The login screen compositor takes this long to stop. In the
+                # login screen user's own configuration: the holder's installer
+                # refuses to install over drop-ins in /etc.
+                [[ $LOGOUT_VM_SLOW_GREETER_STOP =~ ^[0-9]+$ ]]
+                printf '%s\n' 'd=/var/lib/plasmalogin/.config; for s in systemd systemd/user systemd/user/plasma-login-kwin_wayland.service.d; do install -d -o plasmalogin -g plasmalogin $d $d/$s; done' \
+                    "printf '[Service]\\nExecStopPost=/usr/bin/sleep $LOGOUT_VM_SLOW_GREETER_STOP\\n' >\$d/\$s/zz-logout-vm-slow-stop.conf"
             fi
         fi
         printf '%s\n' "$line"

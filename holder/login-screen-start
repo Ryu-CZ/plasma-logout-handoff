@@ -1,0 +1,20 @@
+#!/bin/sh
+# Installed by logout-holder as /usr/local/bin/startplasma-login-wayland, which
+# Plasma Login Manager finds ahead of the one in /usr/bin.
+#
+# After a failed sign-in the login manager starts a new login screen at once,
+# while the old one's compositor may still be stopping. systemd then refuses the
+# new start and the screen stays black until a reboot. This joins the pending
+# stop first (--job-mode=fail never replaces another job), then starts the
+# packaged program. It has no compiled part, so it stays in use across package
+# updates.
+units='plasma-login-wayland.target plasma-login-kwin_wayland.service'
+# $units is split into two arguments on purpose.
+case $(systemctl --user list-jobs --no-legend --plain $units 2>/dev/null) in
+*' stop '*) logger -t logout-holder 'waiting for the previous login screen to stop' ;;
+esac
+# systemd kills a unit that will not stop after 90 s by default.
+if ! error=$(timeout 100 systemctl --user --job-mode=fail stop $units 2>&1); then
+    logger -t logout-holder "could not stop the previous login screen: $error"
+fi
+exec /usr/bin/startplasma-login-wayland "$@"
