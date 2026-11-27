@@ -1,0 +1,55 @@
+=== variant: irreversible; systemd 262 (262.2-1-arch)
+--- logged in
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: active
+repro-portal.service: inactive
+repro-crash.socket: active
+jobs:
+=== logout: stop repro-session.target (--job-mode=replace-irreversibly)
+--- stop pending
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: deactivating
+repro-portal.service: inactive
+repro-crash.socket: active
+jobs:
+  repro-session.target stop waiting
+  repro-workspace.target stop waiting
+  repro-slow.service stop running
+=== crash report: connect to the socket
+connected
+stop command exit status: 0
+--- after logout
+repro-session.target: inactive
+repro-workspace.target: inactive
+repro-slow.service: inactive
+repro-portal.service: inactive
+repro-crash.socket: failed
+jobs:
+=== next login: daemon-reload, then start repro-workspace.target (--job-mode=fail)
+next login: started
+--- end
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: inactive
+repro-portal.service: inactive
+repro-crash.socket: inactive
+jobs:
+=== journal
+Nov 27 09:37:59.547695 systemd[271]: Stopped target repro-session.target.
+Nov 27 09:37:59.547749 systemd[271]: Stopped target repro-workspace.target.
+Nov 27 09:37:59.675236 systemd[271]: Reached target repro-workspace.target.
+Nov 27 09:37:59.675322 systemd[271]: Reached target repro-session.target.
+Nov 27 09:37:59.675608 systemd[271]: Listening on repro-crash.socket.
+Nov 27 09:37:59.675943 systemd[271]: Starting repro-slow.service...
+Nov 27 09:37:59.684191 systemd[271]: Finished repro-slow.service.
+Nov 27 09:37:59.702690 systemd[271]: Stopping repro-slow.service...
+Nov 27 09:38:00.726783 systemd[271]: Requested transaction contradicts existing jobs: Transaction for repro-crash@0-41-666_4434-1000.service/start is destructive (repro-session.target has 'stop' job queued, but 'verify-active' is included in transaction).
+Nov 27 09:38:00.726908 systemd[271]: repro-crash.socket: Failed to queue service startup job: Transaction for repro-crash@0-41-666_4434-1000.service/start is destructive (repro-session.target has 'stop' job queued, but 'verify-active' is included in transaction).
+Nov 27 09:38:00.726925 systemd[271]: repro-crash.socket: Failed with result 'resources'.
+Nov 27 09:38:03.719600 systemd[271]: Stopped repro-slow.service.
+Nov 27 09:38:03.719916 systemd[271]: Stopped target repro-session.target.
+Nov 27 09:38:03.720011 systemd[271]: Stopped target repro-workspace.target.
+Nov 27 09:38:10.775691 systemd[271]: Reached target repro-workspace.target.
+Nov 27 09:38:10.775746 systemd[271]: Reached target repro-session.target.

@@ -169,7 +169,7 @@ Failed to start repro-workspace.target: Transaction for repro-workspace.target/s
 (repro-session.target has 'stop' job queued, but 'start' is included in transaction).
 ```
 
-Variants, same result in 2 runs:
+Variants, same result in 3 runs:
 
 | Variant | Pending stop | session.target after logout | Next start |
 | --- | --- | --- | --- |
@@ -196,8 +196,17 @@ refused start.
    Side effect: crashes during teardown get `Connection refused`, and
    [the processor](https://invent.kde.org/plasma/drkonqi/-/blob/v6.8.3/src/coredump/processor/main.cpp)
    exits 1. `RemoveOnStop=yes` on the socket, or treating `ECONNREFUSED` like a
-   missing socket, would avoid the failed unit (untested). Whether the pickup
-   service reports those crashes at the next login: untested.
+   [missing socket](https://invent.kde.org/plasma/drkonqi/-/blob/v6.8.3/src/coredump/processor/main.cpp#L110),
+   would avoid the failed unit (untested).
+   The stock socket already refuses reports that arrive after it closes: on
+   the affected machine 17 refused reports in one evening predate the
+   workaround and 1 followed it. At a later login the pickup service resent all
+   18. None had KCrash metadata; on the first resend the launcher logged
+   `Nothing handled the dump` and
+   [`GlobalNotifierTruck`](https://invent.kde.org/plasma/drkonqi/-/blob/v6.8.3/src/coredump/launcher/GlobalNotifierTruck.cpp#L56)
+   skips pickups, so no crash notification for these; the cores stay with
+   systemd-coredump. With KCrash metadata the source would start DrKonqi (not
+   observed).
 
    ```diff
     PartOf=plasma-core.target
