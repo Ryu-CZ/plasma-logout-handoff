@@ -1,0 +1,59 @@
+=== variant: after; systemd 262 (262.2-1-arch)
+--- logged in
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: active
+repro-portal.service: inactive
+repro-crash.socket: active
+jobs:
+=== logout: stop repro-session.target (--job-mode=fail)
+--- stop pending
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: deactivating
+repro-portal.service: inactive
+repro-crash.socket: active
+jobs:
+  repro-workspace.target stop waiting
+  repro-slow.service stop running
+  repro-session.target stop waiting
+=== crash report: connect to the socket
+Job for repro-session.target canceled.
+connected
+stop command exit status: 1
+--- after logout
+repro-session.target: active
+repro-workspace.target: inactive
+repro-slow.service: inactive
+repro-portal.service: active
+repro-crash.socket: active
+jobs:
+=== next login: daemon-reload, then start repro-workspace.target (--job-mode=fail)
+Failed to start repro-workspace.target: Transaction for repro-workspace.target/start is destructive (repro-session.target has 'stop' job queued, but 'start' is included in transaction).
+See user logs and 'systemctl --user status repro-workspace.target' for details.
+next login: REFUSED
+--- end
+repro-session.target: inactive
+repro-workspace.target: inactive
+repro-slow.service: inactive
+repro-portal.service: inactive
+repro-crash.socket: active
+jobs:
+=== journal
+Nov 27 09:37:10.114151 systemd[271]: Closed repro-crash.socket.
+Nov 27 09:37:10.274483 systemd[271]: Reached target repro-workspace.target.
+Nov 27 09:37:10.274595 systemd[271]: Reached target repro-session.target.
+Nov 27 09:37:10.274921 systemd[271]: Listening on repro-crash.socket.
+Nov 27 09:37:10.275393 systemd[271]: Starting repro-slow.service...
+Nov 27 09:37:10.289095 systemd[271]: Finished repro-slow.service.
+Nov 27 09:37:10.311014 systemd[271]: Stopping repro-slow.service...
+Nov 27 09:37:11.334366 systemd[271]: Stopped target repro-workspace.target.
+Nov 27 09:37:14.324913 systemd[271]: Stopped repro-slow.service.
+Nov 27 09:37:15.339093 systemd[271]: Starting repro-portal.service...
+Nov 27 09:37:16.342069 systemd[271]: Requested transaction contradicts existing jobs: Transaction for repro-session.target/stop is destructive (repro-portal.service has 'start' job queued, but 'stop' is included in transaction).
+Nov 27 09:37:16.342076 systemd[271]: repro-session.target: Failed to enqueue stop job, ignoring: Transaction for repro-session.target/stop is destructive (repro-portal.service has 'start' job queued, but 'stop' is included in transaction).
+Nov 27 09:37:18.349940 systemd[271]: Finished repro-portal.service.
+Nov 27 09:37:18.890798 systemd[271]: Stopping repro-portal.service...
+Nov 27 09:37:18.892580 systemd[271]: Requested transaction contradicts existing jobs: Transaction for repro-workspace.target/start is destructive (repro-session.target has 'stop' job queued, but 'start' is included in transaction).
+Nov 27 09:37:21.903658 systemd[271]: Stopped repro-portal.service.
+Nov 27 09:37:21.903797 systemd[271]: Stopped target repro-session.target.

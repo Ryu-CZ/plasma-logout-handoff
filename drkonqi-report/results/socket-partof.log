@@ -1,0 +1,54 @@
+=== variant: socket-partof; systemd 262 (262.2-1-arch)
+--- logged in
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: active
+repro-portal.service: inactive
+repro-crash.socket: active
+jobs:
+=== logout: stop repro-session.target (--job-mode=fail)
+--- stop pending
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: deactivating
+repro-portal.service: inactive
+repro-crash.socket: inactive
+jobs:
+  repro-workspace.target stop waiting
+  repro-slow.service stop running
+  repro-session.target stop waiting
+=== crash report: connect to the socket
+[Errno 111] Connection refused
+stop command exit status: 0
+--- after logout
+repro-session.target: inactive
+repro-workspace.target: inactive
+repro-slow.service: inactive
+repro-portal.service: inactive
+repro-crash.socket: inactive
+jobs:
+=== next login: daemon-reload, then start repro-workspace.target (--job-mode=fail)
+next login: started
+--- end
+repro-session.target: active
+repro-workspace.target: active
+repro-slow.service: inactive
+repro-portal.service: inactive
+repro-crash.socket: inactive
+jobs:
+=== journal
+Nov 27 09:37:43.252053 systemd[271]: Stopped repro-portal.service.
+Nov 27 09:37:43.252281 systemd[271]: Stopped target repro-session.target.
+Nov 27 09:37:43.252351 systemd[271]: Stopped target repro-workspace.target.
+Nov 27 09:37:43.413714 systemd[271]: Reached target repro-workspace.target.
+Nov 27 09:37:43.413759 systemd[271]: Reached target repro-session.target.
+Nov 27 09:37:43.414057 systemd[271]: Listening on repro-crash.socket.
+Nov 27 09:37:43.414468 systemd[271]: Starting repro-slow.service...
+Nov 27 09:37:43.425912 systemd[271]: Finished repro-slow.service.
+Nov 27 09:37:43.447782 systemd[271]: Closed repro-crash.socket.
+Nov 27 09:37:43.448380 systemd[271]: Stopping repro-slow.service...
+Nov 27 09:37:47.466405 systemd[271]: Stopped repro-slow.service.
+Nov 27 09:37:47.466702 systemd[271]: Stopped target repro-session.target.
+Nov 27 09:37:47.466751 systemd[271]: Stopped target repro-workspace.target.
+Nov 27 09:37:54.526563 systemd[271]: Reached target repro-workspace.target.
+Nov 27 09:37:54.526693 systemd[271]: Reached target repro-session.target.
