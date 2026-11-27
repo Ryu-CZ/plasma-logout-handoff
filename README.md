@@ -38,7 +38,7 @@ flowchart LR
 | Desktop ⇄ lock screen (blue) | plasma-lock-handoff |
 | Sign-in → desktop (green) | plasma-login-handoff |
 | Logout → login screen (amber) | **plasma-logout-handoff** (this repo) |
-| Building and installing all patches, rollback | plasma-handoff-maintenance |
+| Building, testing and installing the session patches (lock, login); rollback. The logout holder is only checked | plasma-handoff-maintenance |
 
 ## The pieces
 
