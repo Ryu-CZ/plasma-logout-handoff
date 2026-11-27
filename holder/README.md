@@ -12,7 +12,8 @@ and Restart and Shutdown from the Plasma menu worked (Shutdown 2026-11-26
 been through normal logouts and sign-ins on Vandal.
 v7 (the animation setting and the new package guard,
 [VM results](../README.md#holder-v7-animation-setting-and-package-guard-vm))
-replaced it at 16:56 the same day and has not been through a logout there yet.
+replaced it at 16:56 the same day. The first logout and sign-in with v7 worked,
+with a smooth logout; Restart and Shutdown have not been tried there with v7.
 
 ## What happens
 

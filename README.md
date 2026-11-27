@@ -9,7 +9,8 @@ is separate from the [login](../plasma-login-handoff) and
 
 **Goal met on Vandal.** The logout holder ([holder/](holder/README.md),
 v5) was installed and verified; v6 (adds recovery after a failed sign-in)
-replaced it on 2026-11-27 and has been through normal logouts since. At logout,
+and then v7 (no login screen scale-in, package guard) replaced it on
+2026-11-27; the logout with v7 was smooth. At logout,
 the desktop's wallpaper and panel stay on screen until the themed login screen appears over its own wallpaper, with
 no black in between. Keyboard sign-in works with the lid closed. Restart
 from the Plasma menu works. Shutdown from the Plasma menu works
@@ -103,8 +104,9 @@ the cause of either individual dark interval. The video is not committed.
   recovery itself is not seen in use
   ([install record](#vandal-v6-installed-2026-11-27)).
 - Bundle v7 (no-animation setting in the bundle, new package guard) installed
-  on Vandal 2026-11-27 16:56. No logout with it yet
-  ([install record](#vandal-v7-installed-2026-11-27)).
+  on Vandal 2026-11-27 16:56; first logout and sign-in at 17:01–17:02 worked
+  ([record](#vandal-v7-installed-2026-11-27)). Restart and Shutdown have not
+  been tried on Vandal with v7 (both passed in the VM).
 - After an update of a package in the bundle's `PACKAGES` (Qt, KWin, the
   login manager, `kdecoration`, `kwindowsystem`), or one that leaves a copy
   unable to load, rebuild and reinstall the bundle to get the backdrop back.
@@ -1381,3 +1383,15 @@ journalctl -b --since -10min -o short-precise --no-pager \
   -g 'logout-holder|startplasma-login-wayland|Failed to enqueue|destructive'
 journalctl -b --since -10min --no-pager -g 'starting the stock'
 ```
+
+First logout with v7, 17:01:55 (journal): the login screen started through the
+wrapper, backdrop first paint 17:01:58.96, greeter connected 17:01:59.29, the
+helper stopped 17:02:00.52. No `starting the stock` message since the install,
+so neither copy was replaced; no `Failed to enqueue` or `destructive`. Sign-in
+at 17:02:03.86 reached the desktop.
+
+The user reported: "logout was totaly smooth, login black screen is probably
+none of your concern". The black at sign-in is followed by the
+[login handoff](../plasma-login-handoff); it was already reported with v6
+before the no-animation setting existed. The journal does not show frames, so
+it says nothing about that black.
