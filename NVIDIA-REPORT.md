@@ -32,4 +32,4 @@ Related but different: [NVIDIA issue #1553](https://github.com/NVIDIA/open-gpu-k
 
 ## Before posting
 
-NVIDIA’s [Linux reporting instructions](https://forums.developer.nvidia.com/t/if-you-have-a-problem-please-read-this-first/27131) request an `nvidia-bug-report.log.gz`. No diagnostic bundle is attached. Review any bundle for private system or session details before sharing; do not put it, raw journals, or video in the public repository. The [investigation record](README.md#stock-x11-with-framebuffer-attribution-2340) documents the measurements separately.
+NVIDIA’s [Linux reporting instructions](https://forums.developer.nvidia.com/t/if-you-have-a-problem-please-read-this-first/27131) request an `nvidia-bug-report.log.gz`. No diagnostic bundle is attached. Review any bundle for private system or session details before sharing; do not put it, raw journals, or video in the public repository. The [investigation record](docs/LOG.md#loki-stock-x11-with-framebuffer-attribution-2340-88d7b1c-8054180) documents the measurements separately.
