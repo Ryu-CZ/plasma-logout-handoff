@@ -152,6 +152,32 @@ with (connect("serial") as serial, connect("qmp") as qmp,
         command(" && ".join(installs) + ' && { ls -l /usr/local/bin/ /usr/local/lib/logout-holder 2>&1; '
                 'printf "\\nLOGOUT_VM_INSTALL_%s\\n" OK; }')
         wait_for(b"LOGOUT_VM_INSTALL_OK", 30)
+    if os.environ.get("LOGOUT_VM_GREETER_NO_SCALE") == "1":
+        # Turn off KWin's window-open animation for the login screen's
+        # compositor only, as proposed for Vandal: a second drop-in and a
+        # kwinrc in an extra config directory; the holder's files stay as they are.
+        dropin = ("[Service]\nEnvironment=\"XDG_CONFIG_DIRS="
+                  "/usr/local/lib/logout-holder-test/xdg:%E/kdedefaults:/etc/xdg\"\n")
+        kwinrc = "[Plugins]\nscaleEnabled=false\n"
+        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
+                'install -d /usr/local/lib/logout-holder-test/xdg '
+                '/etc/systemd/user/plasma-login-kwin_wayland.service.d && '
+                f'echo {base64.b64encode(kwinrc.encode()).decode()} | base64 -d '
+                '>/usr/local/lib/logout-holder-test/xdg/kwinrc && '
+                f'echo {base64.b64encode(dropin.encode()).decode()} | base64 -d '
+                '>/etc/systemd/user/plasma-login-kwin_wayland.service.d/81-no-open-animation.conf && '
+                'printf "\\nLOGOUT_VM_NO_SCALE_%s\\n" OK')
+        wait_for(b"LOGOUT_VM_NO_SCALE_OK", 10)
+    if os.environ.get("LOGOUT_VM_GREETER_FORCE_ANIMATIONS") == "1":
+        # KWin turns script animations off on a software renderer (llvmpipe),
+        # so the VM greeter would never run them; Vandal renders in hardware.
+        dropin = '[Service]\nEnvironment="KWIN_EFFECTS_FORCE_ANIMATIONS=1"\n'
+        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
+                'install -d /etc/systemd/user/plasma-login-kwin_wayland.service.d && '
+                f'echo {base64.b64encode(dropin.encode()).decode()} | base64 -d '
+                '>/etc/systemd/user/plasma-login-kwin_wayland.service.d/82-force-animations.conf && '
+                'printf "\\nLOGOUT_VM_FORCE_ANIM_%s\\n" OK')
+        wait_for(b"LOGOUT_VM_FORCE_ANIM_OK", 10)
     crash = os.environ.get("LOGOUT_VM_CRASH_REPORT")
     if crash not in (None, "stock", "fixed"):
         raise ValueError("LOGOUT_VM_CRASH_REPORT must be stock or fixed")
@@ -395,7 +421,14 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
                 'count=$(journalctl -b -u "$dm.service" --no-pager -o cat '
                 '| grep -Fc "Message received from greeter: Connect"); '
                 'if [[ $count -gt $before ]]; '
-                'then printf "\\nLOGOUT_VM_GREETER_RETURNED\\n"; break; fi; sleep .05; done')
+                'then printf "\\nLOGOUT_VM_GREETER_RETURNED\\n"; break; fi; sleep .05; done'
+                + ('; sleep ' + str(float(os.environ.get("LOGOUT_VM_EFFECTS_PROBE_DELAY", ".3"))) + '; k() { runuser -u "$dm" -- busctl --address="unix:path=/run/user/$g/bus" "$@"; }; '
+                   'k get-property org.kde.KWin /Effects org.kde.kwin.Effects loadedEffects '
+                   '| sed "s/^/GREETER_EFFECTS /"; '
+                   'k call org.kde.KWin /KWin org.kde.KWin supportInformation '
+                   '| grep -o -E "(Compositing Type|OpenGL renderer|OpenGL platform|Painting backend)[A-Za-z ]*: [A-Za-z0-9 ._()/:-]*" '
+                   '| sed "s/^/GREETER_RENDER /"'
+                   if os.environ.get("LOGOUT_VM_EFFECTS_PROBE") == "1" else ""))
         # Drain serial concurrently so guest TTY output cannot stall logout.
         returned = worker.submit(wait_for, b"LOGOUT_VM_GREETER_RETURNED", 22)
         attempted = False

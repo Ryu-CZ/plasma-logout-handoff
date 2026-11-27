@@ -8,8 +8,9 @@ is separate from the [login](../plasma-login-handoff) and
 ## Status (2026-11-26)
 
 **Goal met on Vandal.** The logout holder ([holder/](holder/README.md),
-v5) is installed. At logout, the desktop's wallpaper and panel stay on
-screen until the themed login screen appears over its own wallpaper, with
+v5) was installed and verified; v6 (adds recovery after a failed sign-in)
+replaced it on 2026-11-27 and has been through normal logouts since. At logout,
+the desktop's wallpaper and panel stay on screen until the themed login screen appears over its own wallpaper, with
 no black in between. Keyboard sign-in works with the lid closed. Restart
 from the Plasma menu works. Shutdown from the Plasma menu works
 (Vandal, 2026-11-26 22:56). How it works, how to install, upgrade and undo it, and its
@@ -96,9 +97,24 @@ the cause of either individual dark interval. The video is not committed.
   traced in the journal and the VM; user drop-in installed and passed one
   logout. See
   [the log entry](#vandal-failed-re-login-after-logout-2026-11-26-2101).
-- Install bundle v6 on Vandal, so that a failed sign-in returns to the login
-  screen instead of staying black. Tested in the VM only; steps under
-  [greeter recovery](#delivery-proposal).
+- Bundle v6 (a failed sign-in returns to the login screen instead of staying
+  black) installed on Vandal 2026-11-27 12:35. The greeter runs through the
+  wrapper after logout; no failed sign-in has happened there since, so the
+  recovery itself is not seen in use
+  ([install record](#vandal-v6-installed-2026-11-27)).
+- Move the login screen's no-animation override into the holder bundle (v7).
+  It runs on Vandal from the test files installed by
+  `greeter-animation-test.sh` ([result](#login-screen-scale-in-reproduced-in-the-vm));
+  the holder's `--restore` does not remove it.
+- `PACKAGES` pins 5 packages, but the holder's greeter copies link 39 that
+  are Qt or use Qt (including `kdecoration`, `kscreenlocker`,
+  `layer-shell-qt`, `libplasma`), so an update to the others alone keeps the
+  copies in use. Raised by the maintenance project (2026-11-27), count checked
+  here. Pinning all of them would drop the backdrop after most KDE Frameworks
+  updates; a start-time check that the copies still load is an alternative.
+  Both sides suggest exact pins only where the copies use private ABI (Qt,
+  KWin, the login manager) plus an `ldd -r` check in `greeter-start` that
+  falls back to the stock programs. Not changed; the user's call.
 - After a KWin, Qt or Plasma Login Manager update, rebuild and reinstall the
   bundle to get the backdrop back. Sign-in keeps working meanwhile, on the
   stock programs.
@@ -1130,7 +1146,7 @@ the login screen; 12–13 black captures followed the password, as in
 After a last change to `monitor.py` (escaping of line breaks in new commands),
 nine runs across the new modes were repeated as `final-*`; all passed.
 
-To install on Vandal (not done), from a checkout that has this change:
+To install on Vandal (done 2026-11-27, see below), from a checkout that has this change:
 
 ```bash
 cd holder
@@ -1149,6 +1165,122 @@ Checked read only on 27 November: the packages v5 pins are installed, systemd's
 `PATH` is `/usr/local/sbin:/usr/local/bin:/usr/bin`, and `plasmalogin.service`
 sets no environment of its own, so the installer's new check should accept this
 machine.
+
+#### Vandal: v6 installed (2026-11-27)
+
+The user ran, at 12:34:59, `sudo bash …/holder-bundle-vandal-5/install.sh
+--restore && sudo bash …/holder-bundle-vandal-6/install.sh`; both finished
+within 0.4 s and the installer's `PATH` check accepted the machine. Checked
+afterwards as the user: `/usr/local/bin/startplasma-login-wayland` is the
+bundle's `login-screen-start` byte for byte, and every file in
+`/usr/local/lib/logout-holder/MANIFEST` matches its hash except
+`/etc/polkit-1/rules.d/60-logout-holder.rules`, which only root can read.
+The DrKonqi socket drop-in is still in place. No logout yet with v6; the
+login screen running at install time was started by v5.
+
+Check after the next logout:
+
+```bash
+journalctl -b --since -10min -o short-precise --no-pager \
+  -g 'startplasma-login-wayland|logout-holder|contradicts existing jobs|Failed to enqueue'
+```
+
+#### Vandal: first logout with v6 (2026-11-27 12:46)
+
+Reboot at 12:43 after a package update (kernel, pipewire; no KWin, Qt or
+Plasma Login Manager change, so `PACKAGES` still matched). Logout at 12:46:49
+and sign-in at 12:47:00 both worked. The login manager started the greeter through the
+wrapper (`Starting Wayland user session: … "/usr/local/bin/startplasma-login-wayland"`),
+which logged nothing, so there was no pending stop to wait for. The DrKonqi
+socket closed at 12:46:49.72; Beeper's crash at 12:46:49.77 was refused
+(`"Connection refused"`) and the session stopped normally.
+
+The user reported two visual problems:
+
+1. As the login screen appears, it dims, then the sign-in UI scales up from the
+   centre and slides into place; only the end of that is visible. The user had
+   seen this before v6 ("not top importance") and thinks it began with a later
+   greeter change.
+2. One dark frame between the login screen and the desktop at sign-in.
+
+Checked read only:
+
+- The greeter theme has not changed since 2026-11-20: its binary
+  (`/usr/local/lib/plasmalogin-theme/plasma-login-greeter`) and QML sources
+  are dated 2026-11-20. The 2026-11-26 anchor fix (vandal-lock-screen
+  `994cb5e`) changed only `/usr/share/vandal-login-branding/…/SessionManagementScreen.qml`.
+  The greeter imports `org.kde.breeze.components` from the package
+  (`plasma-workspace` 6.8.3-1.1, unaltered per `pacman -Qkk`) and takes only the
+  logo and fonts from `vandal-login-branding`.
+- The greeter KWin runs with no configuration of its own, so KWin's default
+  window-open animation applies to the greeter window. Before the holder, the
+  screen was black until the greeter drew. Since the holder, the backdrop
+  shows the wallpaper first, so an animation of the greeter window would now
+  be visible. This is a hypothesis; nothing in the journal shows animations.
+- Last sign-in confirmed smooth: plasma-login-handoff `dcb7adf`
+  (2026-11-25), before any holder bundle. Since then, the holder has
+  replaced the greeter's KWin and wallpaper programs and copies the desktop's
+  display settings to the greeter. At sign-in: `Jumping to VT 2` at
+  12:47:00.470, session KWin started at 12:47:00.690.
+
+The other session (plasma-lock-handoff) reports that the user does not see
+the scale-in at boot, only after logout. Both paths paint the backdrop
+first. After logout the greeter connected 0.33 s after the backdrop's first
+paint; at boot, 1.5 s after.
+
+VM frames from `greeter-recovery/theme-cold-1` (Vandal theme, v6, about one
+capture every 47 ms after logout) show no scale-in. The sign-in UI appears
+whole between two captures (`frame-036` → `037`), fades out about 0.3 s later
+(`044`–`046`), and fades back in (`055`–`059`). That fade follows the greeter's
+`uiVisible` (`GreeterState.activeWindow === Window.window` in `Main.qml`).
+The guest's renderer is not logged, so the run does not show whether KWin's
+scale effect could run there at all.
+
+#### Login screen scale-in reproduced in the VM
+
+KWin turns script animations off on a software renderer, so the VM's llvmpipe
+greeter never ran the `scale` window animation (the effects loaded then are the
+11 built-in ones). With `LOGOUT_VM_GREETER_FORCE_ANIMATIONS=1`
+(`KWIN_EFFECTS_FORCE_ANIMATIONS=1` in the greeter KWin) the greeter loads 29
+effects including `scale`. With `LOGOUT_VM_GREETER_NO_SCALE=1` on top, the
+same list without `scale` (28).
+
+The candidate fix, as tested: drop-in
+`plasma-login-kwin_wayland.service.d/81-no-open-animation.conf` setting
+`XDG_CONFIG_DIRS=/usr/local/lib/logout-holder-test/xdg:%E/kdedefaults:/etc/xdg`
+(the starter's own `kdedefaults` directory is kept), with a `kwinrc` there
+containing `[Plugins] scaleEnabled=false`. Results in `anim-batch/` (v6 VM
+bundle, Vandal theme, animations forced):
+
+| Run | Greeter after logout | Result |
+| --- | --- | --- |
+| `ctl-forced-1` (no fix) | dimmed, scaled copy of the screen over the backdrop (`frame-037`), then the sign-in UI grows from the centre into place (`038`–`039`) | passed |
+| `noscale-forced-1`, `fix-cold`, `fix-warm` | no scaled or ghosted frame; the UI appears at full size and opacity (one capture each catches the clock half drawn) | sign-in passed |
+| `ctl-cold` (no fix) | same scaled and dimmed frames as `ctl-forced-1` (`frame-035`–`038`) | sign-in passed |
+| `ctl-forced-2` | login screen not shown until after the capture window (host load) | no sign-in |
+| `noscale-forced-2`, `fix-reboot`, `fix-halt` | first sign-in not ready in 40 s (host load above 20), before the change was installed | not a test |
+| `fix-reboot-2`, `fix-halt-2` | restart, shutdown from the desktop with the fix installed | passed ("Restarting system", "Power down") |
+
+The control matches the user's description ("dims, scales up from the middle
+and slides into place"). In both the control and the fix, the sign-in UI also
+fades out about 0.4 s after appearing until a key is pressed; that is the
+greeter's own `uiVisible` behaviour, not this animation.
+
+Live script: `greeter-animation-test.sh apply|undo|status`. Applied on Vandal
+by the user on 2026-11-27 13:29:41 (first prompt had timed out); the greeter's
+user manager was inactive, so the next greeter start reads the drop-in.
+
+First logout with it, 13:32 (journal): session stopped normally (crash report
+refused, no `Failed to enqueue` or `destructive`); greeter started through the
+wrapper, backdrop first paint 13:32:14.85, greeter connected 15.19, sign-in
+13:32:18.59 reached the session KWin. The journal does not show which effects
+the greeter KWin loaded.
+
+Two more logouts followed, at 13:34:43 and 13:35:39, each with sign-in and
+without `Failed to enqueue` or `destructive`. The user then reported (about
+13:36): "logout and login looks correct, no scaling or dimm". The scale-in is
+gone on Vandal. The override stays installed as the test files; it is not part
+of the holder bundle yet.
 
 #### Limits
 

@@ -5,9 +5,11 @@ instead of black: the desktop's wallpaper stays up, then the login screen
 appears over its own wallpaper. Restart and shutdown are left as they were.
 Design, VM and host evidence: [HOLDER-DESIGN.md](../HOLDER-DESIGN.md).
 
-Status (2026-11-26): v5 installed on Vandal (Intel, HDMI 4K@60, lid closed).
-Logout shows no black, keyboard sign-in works, and Restart from the Plasma
-menu works. Shutdown from the Plasma menu works (2026-11-26 22:56).
+Status (2026-11-27): v6 installed on Vandal (Intel, HDMI 4K@60, lid closed)
+on 2026-11-27 12:35. With v5, logout showed no black, keyboard sign-in worked,
+and Restart and Shutdown from the Plasma menu worked (Shutdown 2026-11-26
+22:56); v6 differs only in the installer and the login-screen wrapper, and has
+been through normal logouts and sign-ins on Vandal.
 
 ## What happens
 
@@ -65,7 +67,8 @@ undoes it).
 
 ## Login screen after a failed sign-in
 
-Not yet installed on Vandal (v5 does not have it); tested in the VM only.
+Installed on Vandal with v6 (2026-11-27 12:35); the greeter starts through it.
+Recovery tested in the VM only (no failed sign-in on Vandal since).
 
 If the desktop fails to start at sign-in, the login manager starts a new login
 screen at once. The old one's compositor may still be stopping, systemd
@@ -119,6 +122,10 @@ From the project directory (see [the main README](../README.md)):
   logout and sign-in, with captured frames.
 - With `LOGOUT_VM_THEME=DIR` added, the Vandal login theme is injected.
 - With `LOGOUT_VM_HOLDER_STALE=1` added, a changed package is simulated.
+- `LOGOUT_VM_GREETER_FORCE_ANIMATIONS=1` turns greeter animations on (the VM's
+  software renderer disables them); `LOGOUT_VM_GREETER_NO_SCALE=1` adds the
+  no-animation override; `LOGOUT_VM_EFFECTS_PROBE=1` logs the effects the
+  returned greeter loaded, after `LOGOUT_VM_EFFECTS_PROBE_DELAY` seconds.
 - With `LOGOUT_VM_HOLDER_UPGRADE=NEW_DIR` added, the bundle above is removed
   and `NEW_DIR` installed from the desktop, with the login manager running.
 - With `LOGOUT_VM_HOLDER_RESTORE=1` added, the last installed bundle is removed
