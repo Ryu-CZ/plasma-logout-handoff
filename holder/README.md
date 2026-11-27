@@ -5,13 +5,14 @@ instead of black: the desktop's wallpaper stays up, then the login screen
 appears over its own wallpaper. Restart and shutdown are left as they were.
 Design, VM and host evidence: [HOLDER-DESIGN.md](../HOLDER-DESIGN.md).
 
-Status (2026-11-27): v6 installed on Vandal (Intel, HDMI 4K@60, lid closed)
+Status (2026-11-27): v6 was installed on Vandal (Intel, HDMI 4K@60, lid closed)
 on 2026-11-27 12:35. With v5, logout showed no black, keyboard sign-in worked,
 and Restart and Shutdown from the Plasma menu worked (Shutdown 2026-11-26
 22:56); v6 differs only in the installer and the login-screen wrapper, and has
 been through normal logouts and sign-ins on Vandal.
-v7 (the animation setting and the new package guard) is built and VM-tested,
-not yet installed ([results](../README.md#holder-v7-animation-setting-and-package-guard-vm)).
+v7 (the animation setting and the new package guard,
+[VM results](../README.md#holder-v7-animation-setting-and-package-guard-vm))
+replaced it at 16:56 the same day and has not been through a logout there yet.
 
 ## What happens
 

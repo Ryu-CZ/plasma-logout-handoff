@@ -102,13 +102,9 @@ the cause of either individual dark interval. The video is not committed.
   wrapper after logout; no failed sign-in has happened there since, so the
   recovery itself is not seen in use
   ([install record](#vandal-v6-installed-2026-11-27)).
-- **Bundle v7 is built and VM-tested, not yet installed.** It carries the
-  login screen's no-animation setting (replacing the
-  `greeter-animation-test.sh` files, which its installer removes) and a new
-  package guard ([results](#holder-v7-animation-setting-and-package-guard-vm)).
-  Vandal still runs v6 plus the test files. Install it only after the
-  separate login-screen-to-desktop sign-in test (plasma-login-handoff) has
-  been reported, to keep one live change at a time.
+- Bundle v7 (no-animation setting in the bundle, new package guard) installed
+  on Vandal 2026-11-27 16:56. No logout with it yet
+  ([install record](#vandal-v7-installed-2026-11-27)).
 - After an update of a package in the bundle's `PACKAGES` (Qt, KWin, the
   login manager, `kdecoration`, `kwindowsystem`), or one that leaves a copy
   unable to load, rebuild and reinstall the bundle to get the backdrop back.
@@ -1356,3 +1352,32 @@ sudo bash $c/holder-bundle-vandal-6/install.sh --restore &&
 
 To go back to v6, swap the two versions in that command (the scale-in then
 returns unless `greeter-animation-test.sh apply` is run again).
+
+#### Vandal: v7 installed (2026-11-27)
+
+The user ran, at 16:56:15, `sudo bash -c 'bash …/holder-bundle-vandal-6/install.sh
+--restore && bash …/holder-bundle-vandal-7/install.sh'`. Checked afterwards as
+the user:
+
+- Every file in `/usr/local/lib/logout-holder/MANIFEST` matches its hash except
+  the polkit rule, which only root can read. The helper, `greeter-start`, the
+  patched copies, the login-screen wrapper and `PACKAGES` are the bundle's, byte
+  for byte.
+- The greeter KWin drop-in sets `XDG_CONFIG_DIRS` to the bundle's directory,
+  whose `kwinrc` has `scaleEnabled=false`. The test drop-in
+  `81-no-open-animation.conf` and `/usr/local/lib/logout-holder-test` are gone.
+- Every package in `PACKAGES` is installed at that version, and `ldd -r` on the
+  installed copies reports nothing missing.
+- The DrKonqi socket drop-in is still in place, and the wallpaper fallback is
+  the theme's program.
+- The greeter's user manager was inactive, so the next greeter start reads the
+  new units.
+
+Check after the next logout (no output from the second command, which looks for
+`starting the stock`, means both copies ran):
+
+```bash
+journalctl -b --since -10min -o short-precise --no-pager \
+  -g 'logout-holder|startplasma-login-wayland|Failed to enqueue|destructive'
+journalctl -b --since -10min --no-pager -g 'starting the stock'
+```
