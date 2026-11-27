@@ -24,6 +24,7 @@ declare -A files=(
     [$lib/greeter/libkwin.so.6]=755
     [$lib/greeter/plasma-login-wallpaper]=755
     [$lib/greeter-start]=755
+    [/usr/local/bin/startplasma-login-wayland]=755
     [$lib/PACKAGES]=644
     [$lib/wallpaper-fallback]=644
     [/etc/systemd/system/logout-holder.service]=644
@@ -70,7 +71,7 @@ fi
 for path in "${!files[@]}" "$manifest"; do
     [[ ! -e $path && ! -L $path ]] || die "$path already exists. Nothing changed."
 done
-for name in logout-holder logout-holder.service logout-holder-hook 60-logout-holder.rules greeter-start PACKAGES \
+for name in logout-holder logout-holder.service logout-holder-hook 60-logout-holder.rules greeter-start login-screen-start PACKAGES \
         greeter/kwin_wayland greeter/libkwin.so.6 greeter/plasma-login-wallpaper; do
     [[ -f $here/$name ]] || die "Bundle file $name missing. Nothing changed."
 done
@@ -108,6 +109,18 @@ shopt -u nullglob
 image=$(sed -n 's|^Image=file://||p' /etc/plasmalogin.conf | tail -n1)
 [[ -n $image && -f $image ]] || die "No login screen wallpaper image found in /etc/plasmalogin.conf. Nothing changed."
 
+# login-screen-start runs the packaged program and works only if the login
+# manager finds /usr/local/bin first.
+[[ -x /usr/bin/startplasma-login-wayland ]] || die '/usr/bin/startplasma-login-wayland not found. Nothing changed.'
+pid=$(systemctl show plasmalogin.service -p MainPID --value)
+if (( pid > 0 )); then
+    environment=$(tr '\0' '\n' <"/proc/$pid/environ")
+    search=:$(sed -n 's/^PATH=//p' <<<"$environment"):
+    [[ ${search%%:/usr/bin:*}: == *:/usr/local/bin:* ]] ||
+        die "The login manager does not search /usr/local/bin before /usr/bin ($search). Nothing changed."
+    ! grep -q '^PLASMALOGIN_GREETER_EXEC=' <<<"$environment" ||
+        die 'The login manager has its own login screen command (PLASMALOGIN_GREETER_EXEC). Nothing changed.'
+fi
 umask 022
 put() { install -D -m "${files[$2]}" -- "$1" "$2"; }
 # Until everything is in place, any failure removes what was installed.
@@ -117,6 +130,7 @@ put "$here/greeter/kwin_wayland" $lib/greeter/kwin_wayland
 put "$here/greeter/libkwin.so.6" $lib/greeter/libkwin.so.6
 put "$here/greeter/plasma-login-wallpaper" $lib/greeter/plasma-login-wallpaper
 put "$here/greeter-start" $lib/greeter-start
+put "$here/login-screen-start" /usr/local/bin/startplasma-login-wayland
 # Empty where pacman does not track packages (the test VM): no fallback check.
 printf '%s\n' "$packages" >$lib/PACKAGES; chmod 644 $lib/PACKAGES
 printf '%s\n' "$wallpaper_stock" >$lib/wallpaper-fallback; chmod 644 $lib/wallpaper-fallback

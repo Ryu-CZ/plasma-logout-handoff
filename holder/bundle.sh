@@ -18,7 +18,7 @@ kwin=${KWIN_BUILD:-$HOME/.cache/plasma-logout-handoff/backdrop/build}/bin
 packages=${BUNDLE_PACKAGES:-$(pacman -Q kwin qt6-base qt6-declarative qt6-wayland plasma-login-manager | tr ' ' -)}
 [[ ! -e $out ]] || { echo "$out exists" >&2; exit 1; }
 mkdir -p -- "$out/greeter"
-cp -- "$here"/{install.sh,logout-holder,logout-holder.service,logout-holder-hook,60-logout-holder.rules,greeter-start} "$out/"
+cp -- "$here"/{install.sh,logout-holder,logout-holder.service,logout-holder-hook,60-logout-holder.rules,greeter-start,login-screen-start} "$out/"
 cp -L -- "$kwin/kwin_wayland" "$kwin/libkwin.so.6" "$out/greeter/"
 cp -L -- "$wallpaper" "$out/greeter/plasma-login-wallpaper"
 printf '%s\n' "$packages" >"$out/PACKAGES"

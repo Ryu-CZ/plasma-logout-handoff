@@ -96,6 +96,9 @@ the cause of either individual dark interval. The video is not committed.
   traced in the journal and the VM; user drop-in installed and passed one
   logout. See
   [the log entry](#vandal-failed-re-login-after-logout-2026-11-26-2101).
+- Install bundle v6 on Vandal, so that a failed sign-in returns to the login
+  screen instead of staying black. Tested in the VM only; steps under
+  [greeter recovery](#delivery-proposal).
 - Try Shutdown from the Plasma menu on Vandal; so far only the VM has
   tested it.
 - After a KWin, Qt or Plasma Login Manager update, rebuild and reinstall the
@@ -982,3 +985,168 @@ matches the known `/etc/profile.d/nvidia-rtd3-workaround.sh` `lspci` delay
 with the GPU suspended (see "Cold user-manager delay"); the file is still
 installed. The holder kept the picture meanwhile (backdrop first paint
 22:14:18.58).
+
+### Greeter recovery after a failed sign-in (VM)
+
+2026-11-26 and 27, VM only; nothing was installed or changed on Vandal. The
+goal is the second failure at 21:01: the restarted greeter is refused and the
+screen stays black. Making the desktop start succeed is the DrKonqi drop-in
+above and is not part of this test.
+
+#### How it is tested
+
+`LOGOUT_VM_FAILED_RELOGIN=stuck|recover` (new) adds the six-second
+`graphical-session.target` stop used before, logs out, and signs in 0.8 s after
+the login screen connects, so the desktop start is refused.
+
+- `stuck` passes if the greeter's start is refused too, no greeter connects
+  within 20 s, no greeter UI process runs and no desktop appears.
+- `recover` passes if the desktop start was refused exactly once, the greeter's
+  never, a new greeter connects, its screen is not black, and a second sign-in,
+  made after the old stop finished, reaches a desktop with
+  `graphical-session.target` active.
+
+`LOGOUT_VM_SLOW_GREETER_STOP=SECONDS` (new) adds an `ExecStopPost` sleep to the
+greeter's KWin. All runs use holder bundle v5 (`holder-bundle-vm-5`) unless
+another is named. Results are under
+`~/.cache/plasma-logout-handoff/greeter-recovery/`; `summary` there has a line
+for each run except `stock-cold-stuck-1`, the first (earlier lines lack the
+later columns). In the reproduction and patch runs the sleep was a drop-in in
+`/etc/systemd/user`; the delivery runs use the greeter user's configuration, so
+that the holder can be reinstalled over it.
+
+The guest has Plasma 6.8.3, Qt 6.12.1, KDE Frameworks 6.32.0 and systemd 262.2,
+the same upstream versions as Vandal, and the same `plasma-login-manager`
+6.8.3-1 package file.
+
+#### Reproduction with the packaged starter
+
+| Runs | Greeter KWin stop | Result |
+| --- | --- | --- |
+| `stock-cold-stuck-1…5` | as is | stuck in 1 of 5 (`-4`); otherwise the new greeter came up |
+| `stock-warm-stuck-1…5` | as is | stuck in 0 of 5 |
+| `stock-slow1-cold-0…3`, `stock-slow1-warm-1…2` | 1 s slower | stuck 6 of 6; final screen sampled fully black |
+| `stock-slow6-cold-1` | 6 s slower | stuck |
+
+So cold mode, which Vandal uses, reproduces both errors, but without help it is
+a race. In the ten unslowed runs the old greeter's KWin finished stopping
+26–38 ms after "Greeter starting"; in nine the new starter was not refused, and
+in the reproduced run it asked 3 ms too early. On Vandal at 21:01:36 the refusal
+came 25 ms before the old KWin finished (journal, read only). With the
+one-second slowdown the packaged starter asked about 1 s too early every time.
+
+#### Greeter-only source patch
+
+`build-greeter-fix.sh` builds
+[the patch](patches/startplasma-login-wayland.patch) from a private clone of tag
+`v6.8.3` (here, of `../plasmalogin-theme/upstream`, whose startkde sources are
+unmodified). The unpatched build made the same way imports exactly the same
+symbols and libraries as the installed package's program; the patched build's
+imports differ from it only as the patch's added and removed calls would. The
+builds used are in `build-2/` in the results directory; `stop-fix-2` from 25
+November was not used for these results. Add `LOGOUT_VM_GREETER_FIX=build-2/patched/startplasma-login-wayland`
+(full path) to replace only the guest's greeter starter.
+
+| Runs | Greeter KWin stop | Result |
+| --- | --- | --- |
+| `patch-slow1-cold-1…3`, `patch-slow1-warm-1…2` | 1 s slower | recovered 5 of 5 |
+| `patch-cold-1…3`, `patch-warm-1…3` | as is | recovered 6 of 6 |
+| `patch-slow6-cold-1` | 6 s slower | **stuck**: the starter stops waiting after 4 s |
+| `ctl-patch-cold`, `ctl-patch-warm` | normal logout and sign-in | passed |
+| `ctl-patch-reboot`, `ctl-patch-halt` | restart, shutdown | passed ("Restarting system", "Power down") |
+
+In all eleven recovered runs the new greeter was started 6–8 ms after the old
+KWin had stopped; with the packaged starter in the slowed runs it was started
+about 1 s before. In the unslowed runs the new greeter connected 0.3 s after
+the desktop start was refused. Because the packaged starter also survives most
+unslowed runs, the slowed runs are the evidence that the patch matters.
+
+On Vandal, 24 greeter teardowns in the journals of six boots (26 and 27
+November) took 59–122 ms from "Stopped target plasma-login-wayland.target" to
+the greeter KWin stopped, well inside 4 s. The longest was the 21:01 failure.
+
+#### Delivery proposal
+
+Ship [holder/login-screen-start](holder/login-screen-start) in the holder
+bundle instead of the compiled patch. It is installed as
+`/usr/local/bin/startplasma-login-wayland`, joins the pending stop of the old
+greeter (`systemctl --user --job-mode=fail stop`, up to 100 s) and then runs
+the packaged starter. Plasma Login Manager looks the command up on its `PATH`
+each time it starts a greeter.
+
+| | Wrapper | Compiled patch |
+| --- | --- | --- |
+| Where it waits | before the new greeter starts | while the old one exits |
+| Wait limit | 100 s | 4 s (the login manager allows 5 s) |
+| After a package update | stays in use | needs a rebuild; under `PACKAGES` it would fall back to the packaged starter, and the black screen could return unnoticed |
+| Tested as installed | yes, below | no (only copied over `/usr/bin` in the guest) |
+
+The patch remains the candidate to report upstream. `install.sh` installs the
+wrapper with the other files, refuses if the running login manager does not
+search `/usr/local/bin` before `/usr/bin` or sets `PLASMALOGIN_GREETER_EXEC`,
+and `--restore` removes it. No restart is needed.
+
+New runner options: `LOGOUT_VM_HOLDER_UPGRADE=NEW_DIR` removes the installed
+bundle with its own installer and installs `NEW_DIR` from the desktop, with the
+login manager running, as on Vandal. `LOGOUT_VM_HOLDER_RESTORE=1` then removes
+the last bundle again. `holder-bundle-vm-6` (in the results directory) is v5's
+KWin, wallpaper program and helper plus the new installer and wrapper.
+
+| Runs | Installation | Result |
+| --- | --- | --- |
+| `upgrade-slow1-cold-1…3`, `upgrade-slow1-warm-1…2` | v5 → v6 from the desktop, 1 s slower | recovered 5 of 5 |
+| `upgrade-cold-1…3` | v5 → v6, as is | recovered 3 of 3 |
+| `wrapper-slow6-cold-1…2` | v6, 6 s slower | recovered 2 of 2 |
+| `theme-slow1-cold-1`, `theme-cold-1` | v6 with the Vandal theme | recovered 2 of 2 |
+| `stale-slow1-cold-1` | v6, changed package simulated | recovered; no backdrop, so the packaged KWin ran, and the wrapper stayed in use |
+| `restore-slow1-cold-1`, `upgrade-restore-slow1-cold-1` | v6, or v5 → v6, then `--restore` | stuck, as packaged; the greeter ran from `/usr/bin` again |
+| `ctl-upgrade-cold`, `ctl-upgrade-warm`, `ctl-upgrade-theme-cold` | normal logout and sign-in | passed |
+| `ctl-upgrade-reboot`, `ctl-upgrade-halt` | restart, shutdown | passed ("Restarting system", "Power down") |
+
+The recovery runs after an installation logged the greeter command as
+`/usr/local/bin/startplasma-login-wayland`; none logged a failed stop. From
+"Starting Wayland user session" to the greeter KWin starting, the median after
+logout was 34 ms with the packaged starter (cold, 10 runs) and 48 ms with the
+wrapper (cold, 6 runs). In the normal-logout controls with the
+holder (patched starter and wrapper) no capture was black between logout and
+the login screen; 12–13 black captures followed the password, as in
+`ctl-v5-cold`. Existing modes without the new options still passed:
+`ctl-v5-cold`, and without a holder `ctl-plain-cold` and `ctl-stockfix-warm`.
+After a last change to `monitor.py` (escaping of line breaks in new commands),
+nine runs across the new modes were repeated as `final-*`; all passed.
+
+To install on Vandal (not done), from a checkout that has this change:
+
+```bash
+cd holder
+old=~/.cache/plasma-logout-handoff/holder-bundle-vandal-5
+new=~/.cache/plasma-logout-handoff/holder-bundle-vandal-6
+BUNDLE_PACKAGES="$(cat $old/PACKAGES)" bash bundle.sh $new $old/greeter/plasma-login-wallpaper
+sudo bash $old/install.sh --restore && sudo bash $new/install.sh
+```
+
+`bundle.sh` takes KWin from `backdrop/build`, which matched v5's copy when this
+was written. After the next logout,
+`journalctl -b -g 'startplasma-login-wayland'` should show the
+`/usr/local/bin` path.
+
+Checked read only on 27 November: the packages v5 pins are installed, systemd's
+`PATH` is `/usr/local/sbin:/usr/local/bin:/usr/bin`, and `plasmalogin.service`
+sets no environment of its own, so the installer's new check should accept this
+machine.
+
+#### Limits
+
+- The desktop failure is injected with a slow stopping unit, and the greeter
+  race is made certain with a second one. Neither is the DrKonqi chain.
+- The screen is QEMU's emulated one; nothing here shows a physical display.
+- The second sign-in waited for the old stop to finish. Signing in again before
+  that was not tested; the desktop start would be expected to fail again.
+- The recovered login screen shows no message about the failed sign-in.
+- The wrapper stops running greeter units before starting new ones, which
+  assumes one seat.
+- Not exercised in the VM: the installer's two new refusals (the `PATH` test was
+  only tried on sample strings) and the wrapper's path for a stop that fails or
+  times out.
+- One run was cut off when the working session ended
+  (`interrupted-wrapper-slow6-cold-1`); it was repeated and is not counted.

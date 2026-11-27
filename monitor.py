@@ -13,6 +13,13 @@ import time
 work, results = map(Path, sys.argv[1:])
 mode = os.environ["LOGOUT_VM_MODE"]
 manager = "sddm" if mode == "sddm" else "plasmalogin"
+# The first sign-in after logout must fail (injected slow stop). "stuck": no
+# login screen may follow. "recover": one must, and the next sign-in must work.
+failed = os.environ.get("LOGOUT_VM_FAILED_RELOGIN")
+if failed not in (None, "stuck", "recover"):
+    raise ValueError("LOGOUT_VM_FAILED_RELOGIN must be stuck or recover")
+if failed and (manager != "plasmalogin" or os.environ.get("LOGOUT_VM_SHUTDOWN")):
+    raise ValueError("LOGOUT_VM_FAILED_RELOGIN needs a Plasma Login Manager logout")
 
 
 def connect(name):
@@ -40,7 +47,7 @@ with (connect("serial") as serial, connect("qmp") as qmp,
         marker = re.compile(rb"[\r\n]" + name + rb"\r\n")
         data = b""
         deadline = time.monotonic() + timeout
-        while not marker.search(data):
+        while not (found := marker.search(data)):
             if time.monotonic() > deadline:
                 raise RuntimeError(f"Timed out waiting for {name!r}; see serial.log")
             try:
@@ -53,6 +60,7 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 raise RuntimeError("Guest serial console closed")
             log.write(chunk)
             data = (data + chunk)[-65536:]
+        return found[0].strip()
 
     def command(body):
         serial.sendall((body + "\n").encode())
@@ -128,10 +136,26 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     command(prep + f'[[ $(systemctl show "user@$g.service" -p ActiveState --value) == {expected} ]] '
             '&& echo LOGOUT_VM_CONDITION_OK')
     wait_for(b"LOGOUT_VM_CONDITION_OK", 20)
+    # Change the installation as on a running machine: from the desktop, with
+    # the login manager already running.
+    installs = []
+    if os.environ.get("LOGOUT_VM_HOLDER_UPGRADE"):
+        installs += ["bash /tmp/logout-holder/install.sh --restore",
+                     "bash /tmp/logout-holder-new/install.sh"]
+    if os.environ.get("LOGOUT_VM_HOLDER_RESTORE") == "1":
+        last = "logout-holder-new" if installs else "logout-holder"
+        installs += [f"bash /tmp/{last}/install.sh --restore",
+                     "test ! -e /usr/local/lib/logout-holder",
+                     "test ! -e /usr/local/bin/startplasma-login-wayland",
+                     "test ! -e /etc/systemd/user/plasma-login-kwin_wayland.service.d/80-logout-holder.conf"]
+    if installs:
+        command(" && ".join(installs) + ' && { ls -l /usr/local/bin/ /usr/local/lib/logout-holder 2>&1; '
+                'printf "\\nLOGOUT_VM_INSTALL_%s\\n" OK; }')
+        wait_for(b"LOGOUT_VM_INSTALL_OK", 30)
     crash = os.environ.get("LOGOUT_VM_CRASH_REPORT")
     if crash not in (None, "stock", "fixed"):
         raise ValueError("LOGOUT_VM_CRASH_REPORT must be stock or fixed")
-    if os.environ.get("LOGOUT_VM_DELAY_STOP") == "1" or crash:
+    if os.environ.get("LOGOUT_VM_DELAY_STOP") == "1" or crash or failed:
         # A graphical-session member that outlives KWin during shutdown, like
         # an app that is slow to quit (NetBird took 2.4 s on Vandal).
         seconds = int(os.environ.get("LOGOUT_VM_DELAY_STOP_SECONDS", "6"))
@@ -400,6 +424,43 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             pass  # Still collect the journal for a failed greeter return.
         if os.environ.get("LOGOUT_VM_KMS_STATE") == "1" and not returned.exception():
             clock_anchor()
+    def shot(name):
+        execute("screendump", filename=str(results / name), format="png")
+        mean = float(subprocess.check_output(
+            ["magick", str(results / name), "-format", "%[fx:mean]", "info:"]))
+        print(f"{name}: mean brightness {mean:.4f}")
+        return mean
+
+    if failed:
+        if returned.exception() or not attempted:
+            raise RuntimeError("No sign-in attempt after logout; see serial.log")
+        command('refused() { journalctl -b --no-pager -o cat "_SYSTEMD_UNIT=user@$1.service" _COMM=systemd '
+                '| grep -Fc "Transaction for $2/start is destructive"; }; '
+                'connects() { journalctl -b -u "$dm.service" --no-pager -o cat '
+                '| grep -Fc "Message received from greeter: Connect"; }; '
+                'p() { runuser -u probe -- env XDG_RUNTIME_DIR=/run/user/$u systemctl --user "$@"; }; '
+                'for i in {1..40}; do [[ $(refused $u plasma-workspace-wayland.target) -ge 1 ]] '
+                '&& { printf "\\nLOGOUT_VM_DESKTOP_%s\\n" REFUSED; break; }; sleep .25; done')
+        wait_for(b"LOGOUT_VM_DESKTOP_REFUSED", 15)
+        # Long enough for the injected stop to finish, so a late login screen counts.
+        command('n=0; for i in {1..80}; do [[ $(connects) -ge $((before+2)) ]] && { n=1; break; }; '
+                'sleep .25; done; printf "\\nLOGOUT_VM_SECOND_GREETER=%s\\n" $n')
+        second = wait_for(rb"LOGOUT_VM_SECOND_GREETER=[01]", 60).endswith(b"1")
+        if failed == "recover":
+            if not second:
+                shot("no-greeter.png")
+            else:
+                command('for i in {1..80}; do '
+                        'm=$(systemctl show "user@$u.service" -p ActiveState --value); '
+                        'if [[ $m == inactive ]] || { [[ $(p is-active graphical-session.target) == inactive ]] '
+                        '&& ! p list-jobs --no-legend | grep -qw stop; }; then '
+                        'printf "\\nLOGOUT_VM_OLD_STOP_%s manager=%s\\n" DONE "$m"; '
+                        'logger -t logout-vm "SECOND_SIGN_IN user-manager=$m"; break; fi; sleep .25; done')
+                wait_for(rb"LOGOUT_VM_OLD_STOP_DONE manager=[a-z]+", 30)
+                time.sleep(2)  # Allow the password field to appear.
+                if shot("recovered-greeter.png") < .02:
+                    raise RuntimeError("The second login screen is black")
+                sign_in()
     command('result=failed; for i in {1..40}; do '
             'n=$(loginctl show-seat seat0 -p ActiveSession --value); '
             'if [[ $n != "$s" && $(loginctl show-session "$n" -p Name --value 2>/dev/null) == probe '
@@ -413,6 +474,7 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             '+ SYSLOG_IDENTIFIER=kwin_wayland + SYSLOG_IDENTIFIER=plasma-login-wallpaper '
             '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service '
             '+ USER_UNIT=logout-vm-delay.service + USER_UNIT=plasma-wallpaper.service '
+            '+ SYSLOG_IDENTIFIER=logout-holder '
             '+ _SYSTEMD_UNIT=logout-holder.service + UNIT=logout-holder.service '
             '+ _SYSTEMD_UNIT=polkit.service '
             '+ "_SYSTEMD_UNIT=user@$u.service" _COMM=systemd '
@@ -434,7 +496,31 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
     if relay:
         command('echo RELAY_LOG_BEGIN; cat /tmp/relay.log; printf "\\nRELAY_LOG_END\\n"')
         wait_for(b"RELAY_LOG_END", 10)
+    if failed:
+        time.sleep(3)
+        shot("after.png")
+        command('printf "\\nLOGOUT_VM_END desktop_refused=%s greeter_refused=%s graphical_session=%s greeter_ui=%s\\n" '
+                '$(refused $u plasma-workspace-wayland.target) $(refused $g plasma-login-wayland.target) '
+                '"$(p is-active graphical-session.target 2>/dev/null | grep -x active || echo no)" '
+                '$(pgrep -u "$g" -fc plasma-login-greeter)')
+        end = wait_for(rb"LOGOUT_VM_END desktop_refused=\d+ greeter_refused=\d+ "
+                       rb"graphical_session=[a-z]+ greeter_ui=\d+", 15).decode()
+        state = dict(field.split("=") for field in end.split()[1:])
+        report = (results / "serial.log").read_bytes()
+        relogin = b"\rLOGOUT_VM_RELOGIN=passed\r\n" in report
+        print(f"{end} second_greeter={second:d} relogin={relogin:d}")
+        if failed == "stuck":
+            ok = (not second and not relogin and int(state["greeter_refused"]) >= 1
+                  and state["greeter_ui"] == "0")
+        else:
+            ok = (second and relogin and state["desktop_refused"] == "1"
+                  and state["greeter_refused"] == "0" and state["graphical_session"] == "active")
+        if not ok:
+            raise RuntimeError(f"LOGOUT_VM_FAILED_RELOGIN={failed} failed; see serial.log")
+        print(f"LOGOUT_VM_FAILED_RELOGIN={failed} passed")
     report = (results / "serial.log").read_bytes()
+    if failed == "stuck":
+        sys.exit(0)
     if not attempted or b"\rLOGOUT_VM_RELOGIN=passed\r\n" not in report:
         raise RuntimeError("Did not reach a new desktop after logout; see serial.log")
     if os.environ.get("LOGOUT_VM_COMBINED"):

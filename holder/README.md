@@ -63,11 +63,35 @@ crash), the login screen keeps the previous copy until the next exit from
 Plasma. To copy by hand: `sudo bash sync-greeter-outputs.sh` (`--restore`
 undoes it).
 
+## Login screen after a failed sign-in
+
+Not yet installed on Vandal (v5 does not have it); tested in the VM only.
+
+If the desktop fails to start at sign-in, the login manager starts a new login
+screen at once. The old one's compositor may still be stopping, systemd
+refuses the new start, and the screen stays black until a reboot. The bundle
+installs [login-screen-start](login-screen-start) as
+`/usr/local/bin/startplasma-login-wayland`. The login manager finds it ahead of
+the packaged program, it waits for the pending stop, then it runs the packaged
+program. Evidence: [the main README](../README.md#greeter-recovery-after-a-failed-sign-in-vm).
+
+- It is a shell script that uses only `systemctl`, so it is not tied to
+  `PACKAGES` and stays in use after package updates.
+- It takes effect at the next login screen; no restart or reboot is needed.
+- The installer refuses if the running login manager would not find it.
+- It stops any login screen units still running before starting new ones, which
+  assumes one seat.
+- If the stop fails or takes 100 s, it logs that (`journalctl -t logout-holder`)
+  and starts the packaged program anyway.
+- It does not stop the desktop start from failing; it only gets the login screen
+  back so that you can sign in again. The new login screen shows no error.
+
 ## Build, install, upgrade, undo
 
 The bundle holds the helper, the hook, the unit, the polkit rule,
-`greeter-start` and the two patched programs. `bundle.sh` writes `PACKAGES`
-(the exact package versions they were built against) and `SHA256SUMS`:
+`greeter-start`, `login-screen-start` and the two patched programs. `bundle.sh`
+writes `PACKAGES` (the exact package versions they were built against) and
+`SHA256SUMS`:
 
     bash bundle.sh NEW_DIR PATCHED_PLASMA_LOGIN_WALLPAPER
     sudo bash NEW_DIR/install.sh
@@ -95,6 +119,15 @@ From the project directory (see [the main README](../README.md)):
   logout and sign-in, with captured frames.
 - With `LOGOUT_VM_THEME=DIR` added, the Vandal login theme is injected.
 - With `LOGOUT_VM_HOLDER_STALE=1` added, a changed package is simulated.
+- With `LOGOUT_VM_HOLDER_UPGRADE=NEW_DIR` added, the bundle above is removed
+  and `NEW_DIR` installed from the desktop, with the login manager running.
+- With `LOGOUT_VM_HOLDER_RESTORE=1` added, the last installed bundle is removed
+  again from the desktop.
+- With `LOGOUT_VM_FAILED_RELOGIN=stuck|recover` added, the first sign-in after
+  logout is made to fail. `stuck` passes if no login screen follows; `recover`
+  passes if one does and a second sign-in reaches a desktop.
+  `LOGOUT_VM_SLOW_GREETER_STOP=SECONDS` makes the old login screen compositor
+  slow to stop, so that stock fails every time.
 - With `LOGOUT_VM_SHUTDOWN=reboot|halt` added, the run restarts or shuts
   down from the desktop instead. It passes only if the guest actually goes
   down.
