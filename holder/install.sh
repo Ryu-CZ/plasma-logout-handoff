@@ -13,6 +13,11 @@ kwin_args='--no-lockscreen --no-global-shortcuts --no-kactivities --inputmethod 
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+# The files greeter-animation-test.sh applied before this bundle did the same.
+test_root=/usr/local/lib/logout-holder-test
+test_dropin=/etc/systemd/user/plasma-login-kwin_wayland.service.d/81-no-open-animation.conf
+test_dropin_body=$'[Service]\nEnvironment="XDG_CONFIG_DIRS=/usr/local/lib/logout-holder-test/xdg:%E/kdedefaults:/etc/xdg"'
+
 action=${1:-install}
 [[ $action == install || $action == --restore ]] || die "usage: $0 [--restore]"
 (( EUID == 0 )) || exec sudo /usr/bin/bash "$here/install.sh" "$action"
@@ -26,6 +31,7 @@ declare -A files=(
     [$lib/greeter-start]=755
     [/usr/local/bin/startplasma-login-wayland]=755
     [$lib/PACKAGES]=644
+    [$lib/xdg/kwinrc]=644
     [$lib/wallpaper-fallback]=644
     [/etc/systemd/system/logout-holder.service]=644
     [/etc/xdg/plasma-workspace/shutdown/logout-holder]=755
@@ -33,7 +39,7 @@ declare -A files=(
     [/etc/systemd/user/plasma-login-kwin_wayland.service.d/80-logout-holder.conf]=644
     [/etc/systemd/user/plasma-wallpaper.service.d/80-logout-holder.conf]=644
 )
-dirs=($lib/greeter $lib /etc/xdg/plasma-workspace/shutdown /etc/xdg/plasma-workspace
+dirs=($lib/greeter $lib/xdg $lib /etc/xdg/plasma-workspace/shutdown /etc/xdg/plasma-workspace
       /etc/systemd/user/plasma-login-kwin_wayland.service.d /etc/systemd/user/plasma-wallpaper.service.d)
 
 if [[ $action == --restore ]]; then
@@ -77,6 +83,13 @@ for name in logout-holder logout-holder.service logout-holder-hook 60-logout-hol
 done
 version=$(/usr/bin/kwin_wayland --version 2>/dev/null || true)
 [[ $version == 'kwin 6.8.3' ]] || die "KWin is '$version'; the login screen compositor was built for 6.8.3. Nothing changed."
+for name in greeter/kwin_wayland greeter/plasma-login-wallpaper; do
+    path=
+    [[ $name != greeter/kwin_wayland ]] || path=$here/greeter
+    report=$(LD_LIBRARY_PATH=$path ldd -r "$here/$name" 2>&1) || die "ldd failed on $name. Nothing changed."
+    ! grep -m3 -E 'not found|undefined symbol' <<<"$report" >&2 ||
+        die "$name does not load on this system. Nothing changed."
+done
 # Skipped where pacman does not track it (the test VM unpacks packages directly).
 # The exact packages matter: distributions backport fixes (e.g. KDE bug 528936,
 # lid closed -> prompt on the dark built-in screen) that the copy must carry
@@ -94,8 +107,15 @@ if version=$(pacman -Q plasma-login-manager 2>/dev/null); then
     [[ $version == 'plasma-login-manager 6.8.3-'* ]] ||
         die "$version; the wallpaper program was built for 6.8.3. Nothing changed."
 fi
-[[ ! -e /etc/systemd/user/plasma-login-kwin_wayland.service.d ]] ||
-    die 'The login screen compositor already has local overrides. Nothing changed.'
+# The only override accepted is the unchanged test one, which this install
+# replaces and removes.
+overrides=/etc/systemd/user/plasma-login-kwin_wayland.service.d
+replace_test=0
+if [[ -e $overrides ]]; then
+    [[ $(ls -A -- "$overrides") == "${test_dropin##*/}" && $(grep -v '^#' "$test_dropin") == "$test_dropin_body" ]] ||
+        die 'The login screen compositor already has local overrides. Nothing changed.'
+    replace_test=1
+fi
 stock=$(sed -n 's/^ExecStart=//p' /usr/lib/systemd/user/plasma-login-kwin_wayland.service | tail -n1)
 [[ $stock == "/usr/bin/kwin_wayland $kwin_args" ]] ||
     die "Unexpected login screen compositor command: $stock. Nothing changed."
@@ -134,6 +154,10 @@ put "$here/login-screen-start" /usr/local/bin/startplasma-login-wayland
 # Empty where pacman does not track packages (the test VM): no fallback check.
 printf '%s\n' "$packages" >$lib/PACKAGES; chmod 644 $lib/PACKAGES
 printf '%s\n' "$wallpaper_stock" >$lib/wallpaper-fallback; chmod 644 $lib/wallpaper-fallback
+# No window-open animation on the login screen: the backdrop shows the
+# wallpaper first, so the greeter window would visibly scale in over it.
+install -d -m755 $lib/xdg
+printf '[Plugins]\nscaleEnabled=false\n' >$lib/xdg/kwinrc; chmod 644 $lib/xdg/kwinrc
 put "$here/logout-holder.service" /etc/systemd/system/logout-holder.service
 put "$here/logout-holder-hook" /etc/xdg/plasma-workspace/shutdown/logout-holder
 put "$here/60-logout-holder.rules" /etc/polkit-1/rules.d/60-logout-holder.rules
@@ -145,6 +169,7 @@ printf '%s\n' '# Installed by logout-holder: login screen compositor that shows 
     '# login wallpaper underneath until the wallpaper window has drawn.' '[Service]' 'ExecStart=' \
     "ExecStart=$lib/greeter-start kwin $kwin_args" \
     "Environment=\"KWIN_LOGIN_VM_WALLPAPER=$image\"" \
+    "Environment=\"XDG_CONFIG_DIRS=$lib/xdg:%E/kdedefaults:/etc/xdg\"" \
     >/etc/systemd/user/plasma-login-kwin_wayland.service.d/80-logout-holder.conf
 printf '%s\n' '# Installed by logout-holder: wallpaper window that stays transparent' \
     '# until the picture has loaded, instead of black.' '[Service]' 'ExecStart=' \
@@ -155,6 +180,17 @@ for path in "${!files[@]}"; do sha256sum -- "$path"; done |
     awk '{print $1, $2}' >"$manifest.new"
 mv -T -- "$manifest.new" "$manifest"
 trap - EXIT
+if (( replace_test )); then
+    rm -- "$test_dropin"
+    if [[ -f $test_root/xdg/kwinrc && $(<"$test_root/xdg/kwinrc") == $'[Plugins]\nscaleEnabled=false' ]]; then
+        rm -- "$test_root/xdg/kwinrc"
+        rmdir -- "$test_root/xdg" "$test_root" 2>/dev/null || true
+    else
+        echo "Changed, left in place: $test_root/xdg/kwinrc" >&2
+    fi
+    systemctl daemon-reload
+    echo 'Removed the animation test files; the bundle now provides that setting.'
+fi
 
 echo "Installed. Login screen wallpaper: $image"
 echo 'Takes effect at the next logout. Undo with:'

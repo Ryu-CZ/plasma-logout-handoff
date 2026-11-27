@@ -5,7 +5,7 @@ Manager on CachyOS (Plasma 6.8.3); the wallpaper should stay visible. This
 is separate from the [login](../plasma-login-handoff) and
 [lock](../plasma-lock-handoff) handoffs. See [the long-term plan](PLAN.md).
 
-## Status (2026-11-26)
+## Status (2026-11-27)
 
 **Goal met on Vandal.** The logout holder ([holder/](holder/README.md),
 v5) was installed and verified; v6 (adds recovery after a failed sign-in)
@@ -102,22 +102,18 @@ the cause of either individual dark interval. The video is not committed.
   wrapper after logout; no failed sign-in has happened there since, so the
   recovery itself is not seen in use
   ([install record](#vandal-v6-installed-2026-11-27)).
-- Move the login screen's no-animation override into the holder bundle (v7).
-  It runs on Vandal from the test files installed by
-  `greeter-animation-test.sh` ([result](#login-screen-scale-in-reproduced-in-the-vm));
-  the holder's `--restore` does not remove it.
-- `PACKAGES` pins 5 packages, but the holder's greeter copies link 39 that
-  are Qt or use Qt (including `kdecoration`, `kscreenlocker`,
-  `layer-shell-qt`, `libplasma`), so an update to the others alone keeps the
-  copies in use. Raised by the maintenance project (2026-11-27), count checked
-  here. Pinning all of them would drop the backdrop after most KDE Frameworks
-  updates; a start-time check that the copies still load is an alternative.
-  Both sides suggest exact pins only where the copies use private ABI (Qt,
-  KWin, the login manager) plus an `ldd -r` check in `greeter-start` that
-  falls back to the stock programs. Not changed; the user's call.
-- After a KWin, Qt or Plasma Login Manager update, rebuild and reinstall the
-  bundle to get the backdrop back. Sign-in keeps working meanwhile, on the
-  stock programs.
+- **Bundle v7 is built and VM-tested, not yet installed.** It carries the
+  login screen's no-animation setting (replacing the
+  `greeter-animation-test.sh` files, which its installer removes) and a new
+  package guard ([results](#holder-v7-animation-setting-and-package-guard-vm)).
+  Vandal still runs v6 plus the test files. Install it only after the
+  separate login-screen-to-desktop sign-in test (plasma-login-handoff) has
+  been reported, to keep one live change at a time.
+- After an update of a package in the bundle's `PACKAGES` (Qt, KWin, the
+  login manager, `kdecoration`, `kwindowsystem`), or one that leaves a copy
+  unable to load, rebuild and reinstall the bundle to get the backdrop back.
+  Sign-in keeps working meanwhile, on the stock programs. `kwindowsystem`
+  changes with every KDE Frameworks release (v7 and later).
 - Optional: replace the frozen frame with a reversed boot animation. This
   is a wish, not required.
 
@@ -1297,3 +1293,66 @@ of the holder bundle yet.
   times out.
 - One run was cut off when the working session ended
   (`interrupted-wrapper-slow6-cold-1`); it was repeated and is not counted.
+
+### Holder v7: animation setting and package guard (VM)
+
+Two changes against v6; the helper and the patched programs are byte-identical.
+
+1. **No window-open animation on the login screen**, from the bundle:
+   `/usr/local/lib/logout-holder/xdg/kwinrc`, put on the greeter KWin's
+   configuration path by the bundle's drop-in. The installer accepts the
+   unchanged `greeter-animation-test.sh` files and removes them after a
+   successful install.
+2. **Package guard.** `PACKAGES` was a fixed list of 5, while the copies link
+   39 packages that are Qt or use Qt. `bundle.sh` now derives it: the dynamic
+   loader reports which libraries supply private symbols to the copies, and
+   `kwin`, `plasma-login-manager` and `qt6-wayland` are added. On Vandal:
+   `kdecoration` 6.8.3-1.1, `kwin` 6.8.3-3.1, `kwindowsystem` 6.32.0-1.1,
+   `plasma-login-manager` 6.8.3-1, `qt6-base`, `qt6-declarative` and
+   `qt6-wayland` 6.12.1-1.1. For everything else, `greeter-start` runs
+   `ldd -r` on the copy (about 48 ms for KWin, 30 ms for the wallpaper
+   program) and starts the stock program if a library or symbol is missing.
+   The installer refuses such a bundle.
+
+VM runs (`holder7-batch/`, Vandal theme, VM bundle with the same scripts as
+the Vandal one), all passed, with host load at most 10.2 after each run. "Upgrade" means v6 and the
+test files installed first, then v6 removed and v7 installed from the desktop:
+
+| Run | Start | Result |
+| --- | --- | --- |
+| `upgrade-cold`, `upgrade-warm` | upgrade; animations forced | test files gone after install; greeter loaded 28 effects, no `scale`; backdrop painted; no scaled or dimmed copy and no black between desktop and login screen in the captures; sign-in passed |
+| `fresh-cold` | v7 only; animations forced | same |
+| `upgrade-reboot`, `upgrade-halt` | upgrade | restart ("Restarting system") and shutdown ("Power down") from the desktop |
+| `broken-library` | v7; a library name in the installed KWin copy changed | stock KWin started, logged `libQt6Gone.so.6 => not found`; black before the login screen, as without the backdrop; sign-in passed |
+| `broken-symbol` | v7; a symbol name in the installed wallpaper copy changed | stock wallpaper program started, logged `undefined symbol`; sign-in passed |
+| `stale` | v7; a package listed that is not installed | both stock programs started; black before the login screen; sign-in passed |
+| `restore` | upgrade, then v7 `--restore` | no backdrop at the next login screen; sign-in passed |
+| `recover` | v7; failed sign-in, slow login screen stop | login screen came back; second sign-in passed |
+
+In the three runs with captures and good copies, the desktop is followed
+directly by the login screen. The black captures after the password (10–17)
+are the sign-in gap that earlier runs also show (12–13 in the v6 controls).
+
+Outside the VM, on Vandal as the user, nothing installed: `greeter-start` with
+its paths redirected ran the good copies, and chose the stock program for a
+missing library, a missing symbol (in `libkwin` and in the wallpaper copy) and
+a changed package; the installer's load check passed the Vandal bundle and
+refused the two broken ones.
+
+Limits: the VM installs packages without pacman's database, so its `PACKAGES`
+is empty except in `stale`; the derived list and `bundle.sh`'s derivation ran
+on Vandal only. A copy that loads and then fails while running is not
+detected. A symbol that keeps its name but changes behaviour or layout is
+caught only through the package pins.
+
+Bundle for Vandal:
+`~/.cache/plasma-logout-handoff/holder-bundle-vandal-7`. To install over v6:
+
+```bash
+c=$HOME/.cache/plasma-logout-handoff
+sudo bash $c/holder-bundle-vandal-6/install.sh --restore &&
+    sudo bash $c/holder-bundle-vandal-7/install.sh
+```
+
+To go back to v6, swap the two versions in that command (the scale-in then
+returns unless `greeter-animation-test.sh apply` is run again).

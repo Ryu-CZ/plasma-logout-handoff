@@ -4,7 +4,9 @@
 # built against is still installed at the same version (PACKAGES, pacman
 # database names), otherwise the program that ran before logout-holder was
 # installed. A package update therefore never leaves the login screen
-# running a copy built against older libraries.
+# running a copy built against older private interfaces. A copy the loader
+# cannot complete (a library gone or renamed, a symbol missing) also gives way
+# to the stock program, whichever package caused it.
 #   greeter-start kwin [KWIN ARGS...] | greeter-start wallpaper
 lib=/usr/local/lib/logout-holder
 stale=
@@ -14,17 +16,37 @@ done <"$lib/PACKAGES"
 if [ -n "$stale" ]; then
     echo "logout-holder: changed since install:$stale; starting the stock $1 (reinstall a rebuilt bundle to get the backdrop back)" >&2
 fi
+# Prints why the loader cannot complete program $1; nothing if it can.
+# ldd -r resolves every library and symbol without running the program.
+broken() {
+    if ! report=$(ldd -r "$1" 2>&1); then
+        printf 'ldd failed: %s\n' "$report" | head -n1
+        return
+    fi
+    printf '%s\n' "$report" | grep -m1 -E 'not found|undefined symbol'
+}
+# usable PROGRAM: true if the packages match and the copy loads.
+usable() {
+    [ -z "$stale" ] || return 1
+    problem=$(broken "$1")
+    [ -z "$problem" ] && return 0
+    echo "logout-holder: $1 does not load ($problem); starting the stock $what" >&2
+    return 1
+}
 what=$1
 shift
 case $what in
 kwin)
-    [ -n "$stale" ] && exec /usr/bin/kwin_wayland "$@"
-    export LD_LIBRARY_PATH="$lib/greeter"
-    exec "$lib/greeter/kwin_wayland" "$@"
+    # The library path is part of what is checked; the stock KWin must not get it.
+    if (export LD_LIBRARY_PATH="$lib/greeter"; usable "$lib/greeter/kwin_wayland"); then
+        export LD_LIBRARY_PATH="$lib/greeter"
+        exec "$lib/greeter/kwin_wayland" "$@"
+    fi
+    exec /usr/bin/kwin_wayland "$@"
     ;;
 wallpaper)
-    [ -n "$stale" ] && exec $(cat "$lib/wallpaper-fallback")
-    exec "$lib/greeter/plasma-login-wallpaper"
+    usable "$lib/greeter/plasma-login-wallpaper" && exec "$lib/greeter/plasma-login-wallpaper"
+    exec $(cat "$lib/wallpaper-fallback")
     ;;
 esac
 echo "usage: $0 kwin|wallpaper" >&2

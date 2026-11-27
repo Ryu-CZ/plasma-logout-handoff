@@ -10,6 +10,8 @@ on 2026-11-27 12:35. With v5, logout showed no black, keyboard sign-in worked,
 and Restart and Shutdown from the Plasma menu worked (Shutdown 2026-11-26
 22:56); v6 differs only in the installer and the login-screen wrapper, and has
 been through normal logouts and sign-ins on Vandal.
+v7 (the animation setting and the new package guard) is built and VM-tested,
+not yet installed ([results](../README.md#holder-v7-animation-setting-and-package-guard-vm)).
 
 ## What happens
 
@@ -36,6 +38,10 @@ When Plasma ends the session (logout, restart or shutdown):
    login wallpaper underneath from its first frame. The wallpaper window
    (a patched copy of `plasma-login-wallpaper`) stays transparent until its
    picture has loaded.
+   The login screen compositor also runs without KWin's window-open
+   animation (v7): over the backdrop, the login screen would visibly dim and
+   scale in from the centre. The setting is
+   `/usr/local/lib/logout-holder/xdg/kwinrc`, seen by that compositor only.
 6. The helper exits 2 s after that compositor has the card. If none starts
    within 15 s, or the service is stopped, the console returns to text mode,
    as without the helper.
@@ -89,12 +95,32 @@ program. Evidence: [the main README](../README.md#greeter-recovery-after-a-faile
 - It does not stop the desktop start from failing; it only gets the login screen
   back so that you can sign in again. The new login screen shows no error.
 
+## When the copies are not used
+
+`greeter-start` starts the stock program instead of a copy, and logs why
+(`journalctl -b -g logout-holder`), in either case:
+
+- A package in `PACKAGES` is no longer installed at that version. The list
+  holds the packages whose private code the copies depend on. `bundle.sh`
+  asks the dynamic loader which libraries supply private symbols to the copies
+  (on Vandal `qt6-base`, `qt6-declarative`, `kdecoration`, `kwindowsystem`)
+  and adds `kwin`, whose plugins load into the copy, `qt6-wayland`, a plugin
+  loaded at run time, and `plasma-login-manager`.
+- The copy does not load: `ldd -r` reports a library not found or a symbol
+  missing, whichever package caused it. This costs about 0.05 s for KWin and
+  0.03 s for the wallpaper program (measured on Vandal).
+
+Either way the backdrop is gone until a rebuilt bundle is installed, and
+sign-in works. A copy that loads but fails while running is not detected.
+`kwindowsystem` is a KDE Frameworks package, so expect this after each
+Frameworks release.
+
 ## Build, install, upgrade, undo
 
 The bundle holds the helper, the hook, the unit, the polkit rule,
 `greeter-start`, `login-screen-start` and the two patched programs. `bundle.sh`
-writes `PACKAGES` (the exact package versions they were built against) and
-`SHA256SUMS`:
+writes `PACKAGES` (see above) and `SHA256SUMS`. The installer refuses a
+bundle whose packages are not installed or whose copies do not load:
 
     bash bundle.sh NEW_DIR PATCHED_PLASMA_LOGIN_WALLPAPER
     sudo bash NEW_DIR/install.sh
@@ -103,6 +129,9 @@ To upgrade, remove the installed version with its own bundle, then install
 the new one:
 
     sudo bash OLD_DIR/install.sh --restore && sudo bash NEW_DIR/install.sh
+
+The v7 installer also accepts, and then removes, the unchanged test files of
+`../greeter-animation-test.sh`.
 
 `install.sh --restore` removes everything it installed. If the login screen
 does not appear: Ctrl+Alt+F3, sign in, run the restore line, then
@@ -122,6 +151,8 @@ From the project directory (see [the main README](../README.md)):
   logout and sign-in, with captured frames.
 - With `LOGOUT_VM_THEME=DIR` added, the Vandal login theme is injected.
 - With `LOGOUT_VM_HOLDER_STALE=1` added, a changed package is simulated.
+- With `LOGOUT_VM_HOLDER_BROKEN=library|symbol` added, the installed KWin copy
+  loses a library, or the wallpaper copy a symbol.
 - `LOGOUT_VM_GREETER_FORCE_ANIMATIONS=1` turns greeter animations on (the VM's
   software renderer disables them); `LOGOUT_VM_GREETER_NO_SCALE=1` adds the
   no-animation override; `LOGOUT_VM_EFFECTS_PROBE=1` logs the effects the
@@ -147,10 +178,8 @@ which side of the login screen it is on.
 
 - Restart and shutdown show what they showed without the helper (the
   screen may go black before the boot splash).
-- After a KWin, Qt or Plasma Login Manager update, `greeter-start` runs the
-  stock programs instead of the copies. The backdrop is gone, sign-in still
-  works, until a rebuilt bundle is installed. The installer refuses
-  versions other than those in `PACKAGES`.
+- After an update of a package in `PACKAGES`, the backdrop is gone until a
+  rebuilt bundle is installed ([above](#when-the-copies-are-not-used)).
 - The login screen's KWin copy runs without real-time priority
   (`cap_sys_nice`); see the comment in `install.sh`.
 - The frozen frame stays readable by the next program that controls the

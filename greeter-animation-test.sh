@@ -4,6 +4,8 @@
 # files are not touched. The starter's own kdedefaults directory is kept
 # (startplasma.cpp setupPlasmaEnvironment); the test directory comes first.
 # Applies at the next login screen start (next logout).
+# Superseded by holder v7, whose installer sets this itself and removes these
+# test files.
 #   sudo bash greeter-animation-test.sh apply|undo
 #   bash greeter-animation-test.sh status
 set -euo pipefail

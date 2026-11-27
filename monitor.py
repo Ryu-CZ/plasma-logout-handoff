@@ -136,12 +136,28 @@ with (connect("serial") as serial, connect("qmp") as qmp,
     command(prep + f'[[ $(systemctl show "user@$g.service" -p ActiveState --value) == {expected} ]] '
             '&& echo LOGOUT_VM_CONDITION_OK')
     wait_for(b"LOGOUT_VM_CONDITION_OK", 20)
+    no_scale = os.environ.get("LOGOUT_VM_GREETER_NO_SCALE") == "1"
+    if no_scale:
+        # The animation override as applied by hand on Vandal, before any
+        # upgrade below: runs the real test script.
+        script = Path(__file__).resolve().with_name("greeter-animation-test.sh")
+        encoded = base64.b64encode(script.read_bytes()).decode()
+        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
+                f'echo {encoded} | base64 -d >/tmp/greeter-animation-test.sh && '
+                'bash /tmp/greeter-animation-test.sh apply && '
+                'printf "\\nLOGOUT_VM_NO_SCALE_%s\\n" OK')
+        wait_for(b"LOGOUT_VM_NO_SCALE_OK", 10)
     # Change the installation as on a running machine: from the desktop, with
     # the login manager already running.
     installs = []
     if os.environ.get("LOGOUT_VM_HOLDER_UPGRADE"):
         installs += ["bash /tmp/logout-holder/install.sh --restore",
                      "bash /tmp/logout-holder-new/install.sh"]
+        if no_scale:
+            # The new installer must take over from the test files.
+            installs += ["test ! -e /etc/systemd/user/plasma-login-kwin_wayland.service.d/81-no-open-animation.conf",
+                         "test ! -e /usr/local/lib/logout-holder-test",
+                         "grep -qx scaleEnabled=false /usr/local/lib/logout-holder/xdg/kwinrc"]
     if os.environ.get("LOGOUT_VM_HOLDER_RESTORE") == "1":
         last = "logout-holder-new" if installs else "logout-holder"
         installs += [f"bash /tmp/{last}/install.sh --restore",
@@ -152,22 +168,6 @@ with (connect("serial") as serial, connect("qmp") as qmp,
         command(" && ".join(installs) + ' && { ls -l /usr/local/bin/ /usr/local/lib/logout-holder 2>&1; '
                 'printf "\\nLOGOUT_VM_INSTALL_%s\\n" OK; }')
         wait_for(b"LOGOUT_VM_INSTALL_OK", 30)
-    if os.environ.get("LOGOUT_VM_GREETER_NO_SCALE") == "1":
-        # Turn off KWin's window-open animation for the login screen's
-        # compositor only, as proposed for Vandal: a second drop-in and a
-        # kwinrc in an extra config directory; the holder's files stay as they are.
-        dropin = ("[Service]\nEnvironment=\"XDG_CONFIG_DIRS="
-                  "/usr/local/lib/logout-holder-test/xdg:%E/kdedefaults:/etc/xdg\"\n")
-        kwinrc = "[Plugins]\nscaleEnabled=false\n"
-        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
-                'install -d /usr/local/lib/logout-holder-test/xdg '
-                '/etc/systemd/user/plasma-login-kwin_wayland.service.d && '
-                f'echo {base64.b64encode(kwinrc.encode()).decode()} | base64 -d '
-                '>/usr/local/lib/logout-holder-test/xdg/kwinrc && '
-                f'echo {base64.b64encode(dropin.encode()).decode()} | base64 -d '
-                '>/etc/systemd/user/plasma-login-kwin_wayland.service.d/81-no-open-animation.conf && '
-                'printf "\\nLOGOUT_VM_NO_SCALE_%s\\n" OK')
-        wait_for(b"LOGOUT_VM_NO_SCALE_OK", 10)
     if os.environ.get("LOGOUT_VM_GREETER_FORCE_ANIMATIONS") == "1":
         # KWin turns script animations off on a software renderer (llvmpipe),
         # so the VM greeter would never run them; Vandal renders in hardware.
@@ -178,6 +178,19 @@ with (connect("serial") as serial, connect("qmp") as qmp,
                 '>/etc/systemd/user/plasma-login-kwin_wayland.service.d/82-force-animations.conf && '
                 'printf "\\nLOGOUT_VM_FORCE_ANIM_%s\\n" OK')
         wait_for(b"LOGOUT_VM_FORCE_ANIM_OK", 10)
+    breakage = os.environ.get("LOGOUT_VM_HOLDER_BROKEN")
+    if breakage:
+        # Make an installed copy impossible to load, as a library update could:
+        # same-length edits of the names the loader looks up.
+        edits = {"library": ("kwin_wayland", r"s/libQt6Core\.so\.6/libQt6Gone.so.6/g"),
+                 "symbol": ("plasma-login-wallpaper",
+                            r"s/_ZN10QQuickItem13setParentItemEPS_/_ZN10QQuickItem13setParentGoneEPS_/g")}
+        name, edit = edits[breakage]
+        path = f"/usr/local/lib/logout-holder/greeter/{name}"
+        command('[[ $(systemd-detect-virt --vm) == kvm ]] && '
+                f'cp {path} /tmp/logout-vm-copy && sed -i "{edit}" {path} && '
+                f'! cmp -s {path} /tmp/logout-vm-copy && printf "\\nLOGOUT_VM_BROKEN_%s\\n" OK')
+        wait_for(b"LOGOUT_VM_BROKEN_OK", 10)
     crash = os.environ.get("LOGOUT_VM_CRASH_REPORT")
     if crash not in (None, "stock", "fixed"):
         raise ValueError("LOGOUT_VM_CRASH_REPORT must be stock or fixed")
@@ -507,6 +520,8 @@ with open('/tmp/kms-state', 'w', buffering=1) as out:
             '+ SYSLOG_IDENTIFIER=kwin_wayland + SYSLOG_IDENTIFIER=plasma-login-wallpaper '
             '+ USER_UNIT=plasma-kwin_wayland.service + USER_UNIT=plasma-login-kwin_wayland.service '
             '+ USER_UNIT=logout-vm-delay.service + USER_UNIT=plasma-wallpaper.service '
+            '+ _SYSTEMD_USER_UNIT=plasma-login-kwin_wayland.service '
+            '+ _SYSTEMD_USER_UNIT=plasma-wallpaper.service '
             '+ SYSLOG_IDENTIFIER=logout-holder '
             '+ _SYSTEMD_UNIT=logout-holder.service + UNIT=logout-holder.service '
             '+ _SYSTEMD_UNIT=polkit.service '
