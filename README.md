@@ -128,7 +128,7 @@ monitor at 4K 60 Hz, lid closed. "VM" means the QEMU guest only.
 | Restart from the Plasma menu | Worked live with v4. **Not tried with v7**; passes in VM |
 | Login screen after a failed sign-in | VM only. No failed sign-in live since v6 |
 | Failed quick re-login (DrKonqi cancels the session stop) | Workaround drop-in installed; live logouts passed. The race (2 of 21 exits) is not proven gone |
-| Black at sign-in (after the password) | Still there (reported with v6 and v7); belongs to the login project |
+| Black at sign-in (after the password) | Fixed in the login project (stale KSplash stage), confirmed live 21:06 and 21:07 on maintenance build 4bdcfd79 |
 | Black at restart or shutdown | Unchanged from stock |
 | NVIDIA output, DisplayPort, several monitors | Holder not tested |
 | Stalled login screen, cancelled logout | Not tested (the 15 s give-up ran once, in the v3 restart failure) |
